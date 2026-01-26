@@ -1,0 +1,520 @@
+# 测试运行指南
+
+## 概述
+
+八字排盘系统提供三种测试类型，用于验证 API 和 SPA 的计算结果一致性。
+
+## 前置要求
+
+### 1. 安装测试依赖
+
+```bash
+cd /Users/yangyang/Downloads/Files/rili-bazi/test
+npm install
+```
+
+### 2. 启动 API 服务器（端口 8000）
+
+使用服务管理脚本：
+
+```bash
+cd /Users/yangyang/Downloads/Files/rili-bazi/server
+./start.command
+```
+
+或手动启动：
+
+```bash
+cd /Users/yangyang/Downloads/Files/rili-bazi/server
+node server.js
+```
+
+### 3. 启动 SPA 服务器（端口 8001）
+
+```bash
+cd /Users/yangyang/Downloads/Files/rili-bazi
+python3 -m http.server 8001
+```
+
+## 运行测试
+
+### 使用统一入口（推荐）
+
+```bash
+cd /Users/yangyang/Downloads/Files/rili-bazi/test
+node index.js [测试类型] [选项...]
+```
+
+**选项参数说明：**
+
+| 选项 | 简写 | 说明 | 示例 |
+|------|------|------|------|
+| `--preset` | `-p` | 预设生日组合 | `-p all`, `-p 3`, `-p 2-3`, `-p skip` |
+| `--random` | `-r` | 随机生日组合数量 | `-r 10`, `-r skip` |
+| `--single` | `-s` | 指定单个生日组合 | `-s 1990-5-15-10-男` |
+| `--failed` | `-f` | 失败用例处理 | `-f test`, `-f clear`, `-f skip` |
+
+**预设选项（-p）说明：**
+- `all` - 全部预设用例（默认）
+- `数字` - 前N个，例如：`-p 3` 测试前3个
+- `范围` - 指定范围，例如：`-p 2-3` 测试第2-3个
+- `skip` - 跳过预设用例，只测试随机或单个
+
+**随机选项（-r）说明：**
+- `数字` - 随机生成N个，例如：`-r 10` 随机生成10个
+- `skip` - 跳过随机用例（默认）
+
+**单个选项（-s）说明：**
+- 格式：`年-月-日-时:分-性别`
+- 时:分支持小时或小时:分钟
+- 性别支持：男/女、1/0、M/F
+- 可多次使用，例如：`-s 1990-5-15-10-男 -s 2000-8-8-15:30-F`
+
+**失败选项（-f）说明：**
+- `test` - 测试之前记录的失败用例
+- `clear` - 清空失败用例记录（标注为"已清空"状态）
+- `reset` - 重置失败用例状态（标注为"失败"状态，可重新测试）
+- `skip` - 跳过失败用例（默认）
+
+**测试用例组合顺序：**
+1. 预设用例（test_config.js中定义）
+2. 失败用例（从failed_cases.json读取）
+3. 随机用例（运行时生成）
+4. 单个指定用例（命令行参数）
+
+### 测试类型
+
+| 命令 | 说明 | 调用文件 |
+|------|------|-----------|
+| `node index.js compare` | 完整对比测试 | test_full_comparison.js |
+| `node index.js detail` | 详细对比测试 | test_comparison_detail.js |
+| `node index.js api` | 纯API测试 | test_api_only.js |
+
+### 查看帮助
+
+```bash
+node index.js help
+```
+
+### 示例用法
+
+```bash
+# 测试全部预设用例
+node index.js compare
+
+# 测试前3个预设用例
+node index.js compare -p 3
+
+# 测试第2-3个预设用例
+node index.js compare -p 2-3
+
+# 测试前3个预设 + 随机5个
+node index.js compare -p 3 -r 5
+
+# 只测试随机生成的10个
+node index.js compare -p skip -r 10
+
+# 测试单个指定生日
+node index.js compare -p skip -s 1990-5-15-10-男
+
+# 测试多个单个生日
+node index.js compare -p skip -s 1990-5-15-10-男 -s 2000-8-8-15:30-F
+
+# 测试之前记录的失败用例
+node index.js compare -f test
+
+# 清空失败用例记录
+node index.js compare -f clear
+
+# 重置失败用例状态（可重新测试）
+node index.js compare -f reset
+
+# 完整组合：预设3个 + 失败用例 + 随机5个 + 单个1个
+node index.js compare -p 3 -f test -r 5 -s 1990-5-15-10-M
+
+# 详细测试前5个生日组合
+node index.js detail -p 5
+
+# 详细测试第1至2个生日组合
+node index.js detail -p 1-2
+
+# API测试（不支持选项参数）
+node index.js api
+```
+
+## 测试详情
+
+### 1. 完整对比测试 (compare)
+
+**命令：**
+```bash
+# 测试所有10个生日组合
+node index.js compare
+
+# 测试前N个生日组合
+node index.js compare [数量]
+
+# 测试指定范围的生日组合
+node index.js compare [起始编号]-[结束编号]
+```
+
+**参数说明：**
+- `数量`：测试前 N 个生日组合，如 `compare 3` 测试前 3 个
+- `起始编号-结束编号`：测试指定范围的组合，如 `compare 2-3` 测试第 2 至 3 个，`compare 5-5` 只测试第 5 个
+- 编号从 1 开始，对应 test_config.js 中的 TEST_CASES 数组顺序
+
+**测试内容：**
+- 四柱八字（年、月、日、时）
+- 纳音
+- 五行能量
+- 大运
+- 神煞
+- 地支关系
+- 格局分析
+
+**测试用例：** 默认 10 个，年龄覆盖 15-60 岁
+
+**报告输出：** `test/results/test_report_YYYY-MM-DD_HH-mm-ss.html`
+
+**浏览器模式：** Chrome 非无头模式（会打开浏览器窗口）
+
+### 2. 详细对比测试 (detail)
+
+**命令：**
+```bash
+# 测试所有生日组合
+node index.js detail
+
+# 测试前N个生日组合
+node index.js detail [数量]
+
+# 测试指定范围的生日组合
+node index.js detail [起始编号]-[结束编号]
+```
+
+**测试内容：**
+- 详细展示每个测试案例的四柱数据
+- 包括藏干、空亡、神煞等详细信息
+
+### 3. 纯API测试 (api)
+
+**命令：**
+```bash
+node index.js api
+```
+
+**测试内容：**
+- 仅测试 API 端点
+- 检查返回数据格式是否正确
+- 不依赖 SPA 服务器
+- 不支持测试数量参数
+
+## 测试报告
+
+### 报告位置
+
+```
+test/results/test_report_YYYY-MM-DD_HH-mm-ss.html
+```
+
+### 报告内容
+
+- 汇总统计（总测试数、通过、失败、通过率）
+- 每个测试用例的详细结果
+- 测试用例类型（预设、随机、单个）
+- 差异详情（如有）
+- 比对项目状态（四柱、纳音、五行等）
+
+### 报告查看
+
+直接在浏览器中打开 HTML 文件即可查看。
+
+## 失败用例管理
+
+### 失败用例文件
+
+失败用例自动保存到 `test/failed_cases.json`，该文件已加入 `.gitignore`，不会提交到版本控制。
+
+### 失败用例内容
+
+```json
+[
+  {
+    "year": 2000,
+    "month": 8,
+    "day": 8,
+    "hour": 15,
+    "minute": 30,
+    "gender": "女",
+    "name": "单个测试-2000年8月8日15:30女(25岁)",
+    "failedAt": "2026-01-22T03:43:40.351Z",
+    "status": "已修复",
+    "fixedAt": "2026-01-22T04:07:00.000Z",
+    "clearedAt": "2026-01-22T04:12:07.901Z",
+    "mismatches": [
+      "格局分析: 格局名称: API=食神格 SPA=从弱格",
+      "格局分析: 喜用神: API=火,土 SPA=金,顺势五行"
+    ]
+  }
+]
+```
+
+**状态说明：**
+
+| 状态 | 说明 | 是否会再次测试 | 如何重新测试 |
+|------|------|---------------|-------------|
+| 无状态 | 新记录的失败用例 | ✅ 会测试 | - |
+| 已修复 | 已修复并验证通过 | ❌ 不会测试 | 使用 `-f reset` 重置状态 |
+| 已清空 | 用户手动清空 | ❌ 不会测试 | 使用 `-f reset` 重置状态 |
+| 失败 | 之前已修复后又失败 | ✅ 会测试 | - |
+
+**时间戳说明：**
+
+- `failedAt`: 首次失败的时间
+- `fixedAt`: 修复的时间（可选）
+- `clearedAt`: 清空的时间（可选）
+- `resetAt`: 重置的时间（可选）
+
+### 失败用例操作
+
+**测试失败用例：**
+```bash
+node index.js compare -f test
+```
+
+**清空失败用例：**
+```bash
+node index.js compare -f clear
+```
+
+**重置失败用例（可重新测试）：**
+```bash
+node index.js compare -f reset
+```
+
+**组合使用：**
+```bash
+# 测试失败用例 + 随机5个
+node index.js compare -f test -r 5
+
+# 测试失败用例 + 预设3个
+node index.js compare -f test -p 3
+
+# 重置失败用例后立即测试
+node index.js compare -f reset && node index.js compare -f test
+```
+
+### 失败用例保存规则
+
+- 只保存随机生成和单个指定的失败用例
+- 预设用例的失败用例不会保存（已在test_config.js中定义）
+- 自动去重，避免重复保存相同的失败用例
+- 每次测试运行后，新的失败用例会追加到文件中
+
+## 随机测试用例
+
+### 随机生成规则
+
+- **年龄分布**：以当前年份为基准，生成1-60岁范围的生日
+  - 70%概率：20-45岁（主要年龄段）
+  - 15%概率：1-19岁（青少年）
+  - 15%概率：46-60岁（中老年）
+- **其他参数**：月、日、时辰、性别完全随机
+- **四柱八字唯一性**：确保生成的测试用例四柱八字不重复
+  - 不与预设用例重复
+  - 不与其他随机用例重复
+  - 不与单个指定用例重复
+
+### 随机测试示例
+
+```bash
+# 随机生成10个测试用例
+node index.js compare -p skip -r 10
+
+# 预设3个 + 随机10个
+node index.js compare -p 3 -r 10
+
+# 随机5个 + 单个指定2个
+node index.js compare -p skip -r 5 -s 1990-5-15-10-男 -s 2000-8-8-15:30-F
+```
+
+## 服务管理
+
+### 启动服务
+
+```bash
+cd /Users/yangyang/Downloads/Files/rili-bazi/server
+./start.command
+```
+
+### 停止服务
+
+```bash
+cd /Users/yangyang/Downloads/Files/rili-bazi/server
+./stop.command
+```
+
+### 重启服务
+
+```bash
+cd /Users/yangyang/Downloads/Files/rili-bazi/server
+./restart.command
+```
+
+## 快速测试流程
+
+### 一键测试脚本
+
+创建 `test/run_tests.command`：
+
+```bash
+#!/bin/bash
+
+echo "========================================"
+echo "  八字排盘系统 - 快速测试"
+echo "========================================"
+echo ""
+
+echo "[1/3] 启动 API 服务器..."
+cd /Users/yangyang/Downloads/Files/rili-bazi/server
+./start.command &
+sleep 3
+
+echo ""
+echo "[2/3] 启动 SPA 服务器..."
+cd /Users/yangyang/Downloads/Files/rili-bazi
+python3 -m http.server 8001 &
+sleep 2
+
+echo ""
+echo "[3/3] 运行完整对比测试..."
+cd /Users/yangyang/Downloads/Files/rili-bazi/test
+node index.js compare
+
+echo ""
+echo "========================================"
+echo "  测试完成！"
+echo "========================================"
+```
+
+### 手动测试流程
+
+```bash
+# 终端 1: 启动 API
+cd /Users/yangyang/Downloads/Files/rili-bazi/server
+./start.command
+
+# 终端 2: 启动 SPA
+cd /Users/yangyang/Downloads/Files/rili-bazi
+python3 -m http.server 8001
+
+# 终端 3: 运行测试
+cd /Users/yangyang/Downloads/Files/rili-bazi/test
+node index.js compare
+```
+
+## 常见问题
+
+### 1. 端口被占用
+
+**错误信息：** `EADDRINUSE: address already in use :::8000`
+
+**解决方法：**
+```bash
+cd /Users/yangyang/Downloads/Files/rili-bazi/server
+./stop.command
+```
+
+### 2. Chrome 浏览器未找到
+
+**错误信息：** `Failed to launch the browser process`
+
+**解决方法：** 检查 `test/test_config.js` 中的 `CHROME_PATH` 配置
+
+### 3. SPA 服务器未启动
+
+**错误信息：** `net::ERR_CONNECTION_REFUSED`
+
+**解决方法：** 确保 SPA 服务器在端口 8001 运行
+
+## 配置文件
+
+### test/test_config.js
+
+测试用例和配置文件，包括：
+
+- `TEST_CASES`: 测试用例数组
+- `BEIJING_DONGCHENG_LONGITUDE`: 北京东经坐标
+- `CHROME_PATH`: Chrome 浏览器路径
+- `API_BASE_URL`: API 服务器地址
+- `SPA_BASE_URL`: SPA 服务器地址
+- `TEST_CONFIG`: 测试超时和重试配置
+
+## 注意事项
+
+1. **端口冲突**：确保 8000 和 8001 端口未被占用
+2. **浏览器窗口**：完整对比测试会打开 Chrome 窗口，请勿关闭
+3. **测试报告**：每次运行会生成新的带时间戳的报告
+4. **服务状态**：测试前确保 API 和 SPA 服务器都已启动
+5. **网络延迟**：每个测试用例之间有 2 秒延迟，避免请求过快
+6. **快速测试**：使用测试参数可快速验证单个用例或特定范围测试
+   - 数字格式：`node index.js compare 3` 测试前 3 个
+   - 范围格式：`node index.js compare 2-3` 测试第 2 至 3 个
+   - 单个用例：`node index.js compare 5-5` 只测试第 5 个
+7. **测试顺序**：测试参数中的编号从 1 开始，对应 TEST_CASES 数组中的顺序
+
+## 更新日志
+
+### 2026-01-22
+
+**新增功能：**
+
+1. **失败用例管理**
+   - 自动保存随机生成和单个指定的失败用例到 `test/failed_cases.json`
+   - 支持测试之前记录的失败用例：`-f test`
+   - 支持清空失败用例记录：`-f clear`（标注为"已清空"状态，不删除文件）
+   - 支持重置失败用例状态：`-f reset`（标注为"失败"状态，可重新测试）
+   - 失败用例文件已加入 `.gitignore`，不会提交到版本控制
+   - 失败用例支持状态管理：无状态、已修复、已清空、失败
+
+2. **随机测试用例生成**
+   - 支持运行时随机生成指定数量的测试用例：`-r 10`
+   - 年龄分布：1-60岁，以20-45岁为主（70%概率）
+   - 确保四柱八字唯一性，不与预设用例、其他随机用例、单个指定用例重复
+
+3. **单个指定测试用例**
+   - 支持通过命令行参数指定单个生日组合：`-s 1990-5-15-10-男`
+   - 支持多种性别格式：男/女、1/0、M/F
+   - 支持带分钟的时间格式：`-s 2000-8-8-15:30-F`
+   - 可多次使用，同时测试多个单个指定用例
+
+4. **测试用例组合**
+   - 支持灵活组合预设、失败、随机和单个测试用例
+   - 测试顺序：预设 → 失败 → 随机 → 单个
+   - 所有选项参数均为可选，默认测试全部预设用例
+
+5. **测试报告增强**
+   - 报告中显示测试用例类型（预设、随机、单个）
+   - 更清晰地区分不同来源的测试用例
+
+**命令行参数变更：**
+
+- 旧格式：`node index.js compare [数量]` 或 `node index.js compare [起始编号]-[结束编号]`
+- 新格式：`node index.js compare [选项...]`
+  - `-p` / `--preset`：预设用例选项（all、数字、范围、skip）
+  - `-r` / `--random`：随机用例数量（数字、skip）
+  - `-s` / `--single`：单个指定用例（可多次使用）
+  - `-f` / `--failed`：失败用例处理（test、clear、skip）
+
+**向后兼容：**
+
+- 旧格式命令仍然可用，但建议使用新格式
+- `node index.js compare 3` 等同于 `node index.js compare -p 3`
+- `node index.js compare 2-3` 等同于 `node index.js compare -p 2-3`
+
+**代码改进：**
+
+- 为所有主要函数添加了完整的JSDoc注释
+- 优化了失败用例保存逻辑，确保随机和单个指定用例都能正确记录
+- 改进了四柱八字生成算法，修复了负数取模的问题
+- 增强了参数解析的健壮性和错误处理
