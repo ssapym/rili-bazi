@@ -15,7 +15,10 @@ const TEST_CASES = [
   { year: 2010, month: 5, day: 3, hour: 12, gender: '男', age: 15, name: '青少年男性' },
   { year: 1982, month: 9, day: 18, hour: 20, gender: '女', age: 43, name: '中年女性' },
   { year: 1972, month: 12, day: 25, hour: 4, gender: '男', age: 53, name: '中老年男性' },
-  { year: 1995, month: 7, day: 8, hour: 18, gender: '女', age: 30, name: '青年女性' }
+  { year: 1995, month: 7, day: 8, hour: 18, gender: '女', age: 30, name: '青年女性' },
+  { year: 1997, month: 4, day: 11, hour: 10, gender: '女', age: 28, name: '八字补全测试-拱三合', buquanTest: 'gongsanhe' },
+  { year: 1990, month: 1, day: 15, hour: 6, gender: '女', age: 35, name: '八字补全测试-拱隔位', buquanTest: 'gonggewei' },
+  { year: 1984, month: 2, day: 15, hour: 9, gender: '男', age: 41, name: '八字补全测试-暗带', buquanTest: 'andai' }
 ];
 
 const BEIJING_DONGCHENG_LONGITUDE = 116.42;

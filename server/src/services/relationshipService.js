@@ -70,7 +70,19 @@ const GX = [
   [1, 13, [2, 5], -1, '寅巳害'],
   [1, 13, [3, 4], -1, '卯辰害'],
   [1, 13, [8, 11], -1, '申亥害'],
-  [1, 13, [9, 10], -1, '酉戌害']
+  [1, 13, [9, 10], -1, '酉戌害'],
+  [1, 14, [0, 2], 1, '子寅夹丑'],
+  [1, 14, [1, 3], 2, '丑卯夹寅'],
+  [1, 14, [2, 4], 3, '寅辰夹卯'],
+  [1, 14, [3, 5], 4, '卯巳夹辰'],
+  [1, 14, [4, 6], 5, '辰午夹巳'],
+  [1, 14, [5, 7], 6, '巳未夹午'],
+  [1, 14, [6, 8], 7, '午申夹未'],
+  [1, 14, [7, 9], 8, '未酉夹申'],
+  [1, 14, [8, 10], 9, '申戌夹酉'],
+  [1, 14, [9, 11], 10, '酉亥夹戌'],
+  [1, 14, [10, 0], 11, '戌子夹亥'],
+  [1, 14, [11, 1], 0, '亥丑夹子']
 ];
 
 const PILLAR_NAMES = ['年', '月', '日', '时'];
@@ -135,7 +147,8 @@ function getRelationType(type) {
     10: '会',
     11: '会',
     12: '合',
-    13: '害'
+    13: '害',
+    14: '夹'
   };
   return types[type] || '';
 }
@@ -229,5 +242,16 @@ function calculateRelationships(pillars) {
 }
 
 module.exports = {
-  calculateRelationships
+  calculateRelationships,
+  STEMS,
+  BRANCHES,
+  GX,
+  PILLAR_NAMES,
+  array_intersect,
+  array_diff,
+  empty,
+  count,
+  pc_array_power_set,
+  array_keys,
+  getRelationType
 };

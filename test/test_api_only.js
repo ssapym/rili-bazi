@@ -102,6 +102,22 @@ function validateResponse(data) {
     if (!d.chonghe.branches) errors.push('地支关系 branches 缺失');
   }
 
+  if (!d.buquan) {
+    errors.push('buquan 数据缺失');
+  } else {
+    if (!d.buquan.derivedBranches) errors.push('八字补全 derivedBranches 缺失');
+    if (!d.buquan.gongsanhe) errors.push('八字补全 gongsanhe 缺失');
+    if (!d.buquan.gonggewei) errors.push('八字补全 gonggewei 缺失');
+    if (!d.buquan.andai) errors.push('八字补全 andai 缺失');
+    if (!d.buquan.summary) errors.push('八字补全 summary 缺失');
+    else {
+      if (!d.buquan.summary.hasOwnProperty('totalDerived')) errors.push('八字补全 summary.totalDerived 缺失');
+      if (!d.buquan.summary.hasOwnProperty('gongsanheCount')) errors.push('八字补全 summary.gongsanheCount 缺失');
+      if (!d.buquan.summary.hasOwnProperty('gonggeweiCount')) errors.push('八字补全 summary.gonggeweiCount 缺失');
+      if (!d.buquan.summary.hasOwnProperty('andaiCount')) errors.push('八字补全 summary.andaiCount 缺失');
+    }
+  }
+
   return errors;
 }
 

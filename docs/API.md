@@ -105,6 +105,7 @@ http://localhost:8000/api/bazi?year=1997&month=4&day=11&hour=10&gender=2
 | data.baseInfo | object | 基本信息 |
 | data.sizhu | object | 四柱信息 |
 | data.chonghe | object | 干支关系 |
+| data.buquan | object | 八字补全 |
 | data.nengliang | object | 能量分析 |
 | data.geju | object | 格局分析 |
 | data.dayun | object | 大运信息 |
