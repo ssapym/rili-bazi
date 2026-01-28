@@ -685,6 +685,64 @@ class WuxingEnergyCalculator {
       balance: balanceIndex
     };
   }
+
+  calculateWuxingCount(pillars, buquan) {
+    const count = {
+      'wood': 0,
+      'fire': 0,
+      'earth': 0,
+      'metal': 0,
+      'water': 0
+    };
+
+    const pillarList = [
+      pillars.year, pillars.month, pillars.day, pillars.hour
+    ];
+
+    for (const pillar of pillarList) {
+      const stemElement = this.getWuXingElement(pillar.heavenStem);
+      const branchElement = this.getWuXingElement(pillar.earthBranch);
+      if (stemElement) count[stemElement]++;
+      if (branchElement) count[branchElement]++;
+    }
+
+    for (const pillar of pillarList) {
+      const hides = pillar.hideHeavenStems || [];
+      for (const hide of hides) {
+        const hideElement = this.getWuXingElement(hide.name);
+        if (hideElement) count[hideElement]++;
+      }
+    }
+
+    if (buquan && buquan.derivedBranches) {
+      for (const branch of buquan.derivedBranches) {
+        const branchElement = this.getWuXingElement(branch);
+        if (branchElement) count[branchElement]++;
+      }
+    }
+
+    if (buquan && buquan.andai) {
+      for (const andai of buquan.andai) {
+        const stemElement = this.getWuXingElement(andai.derivedStem);
+        const branchElement = this.getWuXingElement(andai.derivedBranch);
+        if (stemElement) count[stemElement]++;
+        if (branchElement) count[branchElement]++;
+      }
+    }
+
+    const missing = [];
+    for (const element of ['wood', 'fire', 'earth', 'metal', 'water']) {
+      if (count[element] === 0) {
+        missing.push(WUXING_META.names[element]);
+      }
+    }
+
+    return {
+      count,
+      missing,
+      isComplete: missing.length === 0
+    };
+  }
 }
 
 module.exports = WuxingEnergyCalculator;

@@ -229,6 +229,9 @@
 | elements | array | 五行元素数组 |
 | totalScore | number | 总分 |
 | balance | number | 平衡指数 |
+| count | object | 五行数量统计（木/火/土/金/水） |
+| missing | array | 缺失的五行列表 |
+| isComplete | boolean | 五行是否齐全 |
 
 ### wuxing.elements（五行元素）
 
@@ -239,6 +242,28 @@
 | score | number | 得分 |
 | level | string | 旺衰程度：旺、相、休、囚、死 |
 | logs | array | 计算日志 |
+
+### wuxing.count（五行数量统计）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| wood | number | 木的个数 |
+| fire | number | 火的个数 |
+| earth | number | 土的个数 |
+| metal | number | 金的个数 |
+| water | number | 水的个数 |
+
+### wuxing.missing（缺失五行）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| - | array | 缺失的五行列表（如：['金', '土']） |
+
+### wuxing.isComplete（五行是否齐全）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| - | boolean | 五行是否齐全（true=齐全，false=缺失） |
 
 ### shishen（十神能量）
 

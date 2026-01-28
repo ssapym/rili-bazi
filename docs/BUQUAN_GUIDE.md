@@ -371,6 +371,93 @@ curl "http://localhost:8000/api/bazi?year=1978&month=11&day=28&hour=16&gender=1"
 - 年柱（甲子）和日柱（甲寅）天干相同，地支子和寅在十二地支顺序中相邻，推导出丑
 - 八字补全后包含子和丑
 
+### 示例 4：暗带
+
+**请求**：
+```bash
+curl "http://localhost:8000/api/bazi?year=1984&month=2&day=15&hour=9&gender=1"
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "buquan": {
+      "derivedBranches": ["丑"],
+      "gongsanhe": [],
+      "gonggewei": [],
+      "andai": [
+        {
+          "source": "年+月",
+          "desc": "甲子丙寅暗带乙丑",
+          "derivedStem": "乙",
+          "derivedBranch": "丑",
+          "derivedGanZhi": "乙丑",
+          "xun": "甲子旬",
+          "index1": 0,
+          "index2": 2,
+          "middleIndex": 1
+        }
+      ],
+      "summary": {
+        "totalDerived": 1,
+        "gongsanheCount": 0,
+        "gonggeweiCount": 0,
+        "andaiCount": 1
+      }
+    }
+  }
+}
+```
+
+**说明**：
+- 年柱（甲子）和月柱（丙寅）相邻
+- 两柱都在甲子旬内，位置分别为第1个和第3个
+- 推导：第1个和第3个中间夹着第2个（乙丑）
+- 八字补全后包含乙丑
+
+### 示例 5：同时有拱三合和暗带
+
+**请求**：
+```bash
+curl "http://localhost:8000/api/bazi?year=1990&month=1&day=15&hour=6&gender=2"
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "buquan": {
+      "derivedBranches": ["丑", "辰"],
+      "gongsanhe": [],
+      "gonggewei": [
+        {
+          "source": "年+时",
+          "desc": "卯巳夹辰",
+          "type": "夹",
+          "derivedBranch": "辰",
+          "derivedIndex": 4
+        }
+      ],
+      "andai": [],
+      "summary": {
+        "totalDerived": 1,
+        "gongsanheCount": 0,
+        "gonggeweiCount": 1,
+        "andaiCount": 0
+      }
+    }
+  }
+}
+```
+
+**说明**：
+- 年柱（己巳）和时柱（己卯）天干相同，地支巳和卯在十二地支顺序中相邻
+- 推导：巳和卯中间夹着辰
+- 八字补全后包含辰
+
 ## 注意事项
 
 1. **前提条件**：八字补全的前提条件是两柱天干相同，如果八字中没有天干相同的两柱，则无法进行补全
@@ -410,6 +497,7 @@ node index.js api
 |------|------|----------|
 | 2026-01-27 | v1.0 | 初始版本，实现拱三合和拱隔位（夹）功能 |
 | 2026-01-28 | v1.1 | 新增暗带功能，支持相邻两柱在六旬内隔位相夹推导 |
+| 2026-01-28 | v1.2 | 修复buquan.summary.totalDerived未包含暗带计数的问题 |
 
 ## 技术实现
 

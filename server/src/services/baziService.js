@@ -173,6 +173,7 @@ class BaziService {
       const relationships = calculateRelationships(pillars);
       const shensha = calculateShenSha(pillars, isMan);
       const buquan = calculateBuQuan(pillars);
+      const wuxingCount = this.energyCalculator.calculateWuxingCount(pillars, buquan);
       const fortune = this.buildFortuneInfo(childLimit, pillars, isMan);
 
       const result = {
@@ -181,7 +182,10 @@ class BaziService {
         chonghe: relationships,
         buquan: buquan,
         nengliang: {
-          wuxing: wuxingEnergy,
+          wuxing: {
+            ...wuxingEnergy,
+            ...wuxingCount
+          },
           shishen: tenStarEnergy
         },
         geju: analysis,
@@ -271,14 +275,20 @@ class BaziService {
       const analysis = this.analyzePattern(pillars, wuxingEnergy, isMan);
       const relationships = calculateRelationships(pillars);
       const shensha = calculateShenSha(pillars, isMan);
+      const buquan = calculateBuQuan(pillars);
+      const wuxingCount = this.energyCalculator.calculateWuxingCount(pillars, buquan);
       const fortune = this.buildFortuneInfo(childLimit, pillars, isMan);
 
       const result = {
         baseInfo: this.buildJiBenXinXi(SolarDay.fromYmd(year, month, day), pillars, gender, hour, minute),
         sizhu: this.buildSiZhu(pillars, shensha),
         chonghe: relationships,
+        buquan: buquan,
         nengliang: {
-          wuxing: wuxingEnergy,
+          wuxing: {
+            ...wuxingEnergy,
+            ...wuxingCount
+          },
           shishen: tenStarEnergy
         },
         geju: analysis,
