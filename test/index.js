@@ -709,9 +709,9 @@ async function checkServices(testType) {
 
   console.log('');
 
-  if (testType === 'api') {
+  if (testType === 'api' || testType === 'buquan' || testType === 'pillar' || testType === 'relations') {
     if (!apiStatus.running || !apiAccessible) {
-      console.error('错误: API 服务器未运行或页面无法访问，无法执行 API 测试');
+      console.error('错误: API 服务器未运行或页面无法访问，无法执行测试');
       console.log('');
       console.log('启动 API 服务器:');
       console.log('  cd /Users/yangyang/Downloads/Files/rili-bazi/server');
@@ -756,6 +756,21 @@ const TESTS = {
     name: '纯API测试',
     description: '仅测试 API 端点，检查返回数据格式是否正确',
     file: './test_api_only.js'
+  },
+  buquan: {
+    name: '八字补全冲突检测测试',
+    description: '测试八字补全功能中的冲突检测：暗带（双冲+天克地刑）、拱三合和拱隔位（地支六冲）',
+    file: './test_buquan_conflicts.js'
+  },
+  pillar: {
+    name: '干支组合关系测试',
+    description: '测试干支组合关系：双冲（60组）、天克地刑（20组）、双合（30组）',
+    file: './test_pillar_relations.js'
+  },
+  relations: {
+    name: '天干相克和地支六破测试',
+    description: '测试天干相克（6个）和地支六破（6个）关系',
+    file: './test_relationships.js'
   }
 };
 
@@ -839,6 +854,18 @@ function printHelp() {
   console.log('               仅测试 API 端点');
   console.log('               检查返回数据格式是否正确');
   console.log('');
+  console.log('  buquan       八字补全冲突检测测试');
+  console.log('               测试八字补全功能中的冲突检测');
+  console.log('               包括暗带（双冲+天克地刑）、拱三合和拱隔位（地支六冲）');
+  console.log('');
+  console.log('  pillar       干支组合关系测试');
+  console.log('               测试干支组合关系');
+  console.log('               包括双冲（60组）、天克地刑（20组）、双合（30组）');
+  console.log('');
+  console.log('  relations    天干相克和地支六破测试');
+  console.log('               测试天干相克和地支六破关系');
+  console.log('               包括天干相克（6个）和地支六破（6个）');
+  console.log('');
   console.log('  help         显示此帮助信息');
   console.log('');
   console.log('选项:');
@@ -883,6 +910,9 @@ function printHelp() {
   console.log('  node index.js compare -p 3 -f test -r 5 -s 1990-5-15-10-M  # 完整组合');
   console.log('  node index.js detail 5                         # 详细测试前5个预置用例');
   console.log('  node index.js api                              # API测试');
+  console.log('  node index.js buquan                           # 八字补全冲突检测测试');
+  console.log('  node index.js pillar                           # 干支组合关系测试');
+  console.log('  node index.js relations                         # 天干相克和地支六破测试');
   console.log('  node index.js help                             # 显示帮助信息');
   console.log('');
   console.log('测试顺序:');

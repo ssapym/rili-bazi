@@ -3,6 +3,7 @@ const {
   BRANCHES,
   GX,
   PILLAR_NAMES,
+  PILLAR_RELATIONS,
   array_intersect,
   array_diff,
   empty,
@@ -86,7 +87,94 @@ function calculateAnDai(pillars) {
   return andai;
 }
 
+function checkBranchSixClash(derivedBranch, allBranches, pillarNames) {
+  const conflicts = [];
+  const derivedIndex = BRANCHES.indexOf(derivedBranch);
+  
+  for (const gx of GX) {
+    if (gx[1] === 2) {
+      const [branch1, branch2] = gx[2];
+      
+      if (derivedIndex === branch1) {
+        for (let i = 0; i < allBranches.length; i++) {
+          if (allBranches[i] === branch2) {
+            conflicts.push({
+              type: '地支六冲',
+              desc: `${BRANCHES[derivedIndex]}与${BRANCHES[branch2]}相冲`,
+              targetPillar: pillarNames[i],
+              targetBranch: BRANCHES[branch2]
+            });
+          }
+        }
+      } else if (derivedIndex === branch2) {
+        for (let i = 0; i < allBranches.length; i++) {
+          if (allBranches[i] === branch1) {
+            conflicts.push({
+              type: '地支六冲',
+              desc: `${BRANCHES[derivedIndex]}与${BRANCHES[branch1]}相冲`,
+              targetPillar: pillarNames[i],
+              targetBranch: BRANCHES[branch1]
+            });
+          }
+        }
+      }
+    }
+  }
+  
+  return conflicts;
+}
+
+function checkPillarClash(derivedGanZhi, allPillars, pillarNames) {
+  const conflicts = [];
+  const derivedStem = derivedGanZhi[0];
+  const derivedBranch = derivedGanZhi[1];
+  const derivedStemIndex = STEMS.indexOf(derivedStem);
+  const derivedBranchIndex = BRANCHES.indexOf(derivedBranch);
+  
+  for (const relation of PILLAR_RELATIONS) {
+    if (relation.type === '双冲' || relation.type === '天克地刑') {
+      if (relation.stem1 === derivedStemIndex && relation.branch1 === derivedBranchIndex) {
+        const targetStem = STEMS[relation.stem2];
+        const targetBranch = BRANCHES[relation.branch2];
+        const targetGanZhi = targetStem + targetBranch;
+        
+        for (let i = 0; i < allPillars.length; i++) {
+          if (allPillars[i] === targetGanZhi) {
+            conflicts.push({
+              type: relation.type,
+              desc: relation.desc,
+              targetPillar: pillarNames[i],
+              targetGanZhi: targetGanZhi
+            });
+          }
+        }
+      }
+    }
+  }
+  
+  return conflicts;
+}
+
 function calculateBuQuan(pillars) {
+  const pillarData = [
+    { stem: pillars.year.heavenStem, branch: pillars.year.earthBranch, name: '年', ganZhi: pillars.year.heavenStem + pillars.year.earthBranch },
+    { stem: pillars.month.heavenStem, branch: pillars.month.earthBranch, name: '月', ganZhi: pillars.month.heavenStem + pillars.month.earthBranch },
+    { stem: pillars.day.heavenStem, branch: pillars.day.earthBranch, name: '日', ganZhi: pillars.day.heavenStem + pillars.day.earthBranch },
+    { stem: pillars.hour.heavenStem, branch: pillars.hour.earthBranch, name: '时', ganZhi: pillars.hour.heavenStem + pillars.hour.earthBranch }
+  ];
+
+  const allPillars = pillarData.map(p => p.ganZhi);
+  const allBranches = pillarData.map(p => p.branch);
+  const pillarNames = pillarData.map(p => p.name);
+
+  const andai = calculateAnDai(pillars);
+
+  for (const item of andai) {
+    item.conflicts = checkPillarClash(item.derivedGanZhi, allPillars, pillarNames);
+  }
+
+  const validAndai = andai.filter(item => item.conflicts.length === 0);
+
   const dz = [
     BRANCHES.indexOf(pillars.year.earthBranch),
     BRANCHES.indexOf(pillars.month.earthBranch),
@@ -105,14 +193,28 @@ function calculateBuQuan(pillars) {
   const gongsanhe = [];
   const gonggewei = [];
 
-  for (let i = 0; i < 4; i++) {
-    for (let j = i + 1; j < 4; j++) {
-      if (tg[i] !== tg[j]) {
+  const allPillarData = [...pillarData];
+  for (const andaiItem of validAndai) {
+    allPillarData.push({
+      stem: andaiItem.derivedStem,
+      branch: andaiItem.derivedBranch,
+      name: `暗带(${andaiItem.derivedGanZhi})`,
+      ganZhi: andaiItem.derivedGanZhi
+    });
+  }
+
+  const allTg = allPillarData.map(p => p.stem);
+  const allDz = allPillarData.map(p => BRANCHES.indexOf(p.branch));
+  const allPillarNames = allPillarData.map(p => p.name);
+
+  for (let i = 0; i < allPillarData.length; i++) {
+    for (let j = i + 1; j < allPillarData.length; j++) {
+      if (allTg[i] !== allTg[j]) {
         continue;
       }
 
-      const branch1 = dz[i];
-      const branch2 = dz[j];
+      const branch1 = allDz[i];
+      const branch2 = allDz[j];
 
       for (const gx of GX) {
         const type = gx[0];
@@ -137,16 +239,20 @@ function calculateBuQuan(pillars) {
 
           if (c1 === c2) {
             const derivedBranch = BRANCHES[derivedIndex];
-            const pillarNames = [PILLAR_NAMES[i], PILLAR_NAMES[j]].join('+');
+            const source = [allPillarNames[i], allPillarNames[j]].join('+');
             const relationTypeStr = getRelationType(relationType);
 
             const derivedInfo = {
-              source: pillarNames,
+              source: source,
               desc: desc,
               type: relationTypeStr,
               derivedBranch: derivedBranch,
               derivedIndex: derivedIndex
             };
+
+            const allBranchesForCheck = allPillarData.map(p => p.branch);
+            const allPillarNamesForCheck = allPillarData.map(p => p.name);
+            derivedInfo.conflicts = checkBranchSixClash(derivedBranch, allBranchesForCheck, allPillarNamesForCheck);
 
             if (relationType === 9 || relationType === 11) {
               gongsanhe.push(derivedInfo);
@@ -162,8 +268,6 @@ function calculateBuQuan(pillars) {
       }
     }
   }
-
-  const andai = calculateAnDai(pillars);
 
   for (const item of andai) {
     if (!derivedBranches.includes(item.derivedBranch)) {

@@ -89,6 +89,9 @@ node index.js [测试类型] [选项...]
 | `node index.js compare` | 完整对比测试 | test_full_comparison.js |
 | `node index.js detail` | 详细对比测试 | test_comparison_detail.js |
 | `node index.js api` | 纯API测试 | test_api_only.js |
+| `node index.js buquan` | 八字补全冲突检测测试 | test_buquan_conflicts.js |
+| `node index.js pillar` | 干支组合关系测试 | test_pillar_relations.js |
+| `node index.js relations` | 天干相克和地支六破测试 | test_relationships.js |
 
 ### 查看帮助
 
@@ -208,6 +211,47 @@ node index.js api
 - 检查返回数据格式是否正确
 - 不依赖 SPA 服务器
 - 不支持测试数量参数
+
+### 4. 八字补全冲突检测测试 (buquan)
+
+**命令：**
+```bash
+# 测试所有预设用例
+node index.js buquan
+
+# 测试前3个预设用例
+node index.js buquan -p 3
+
+# 测试第2-3个预设用例
+node index.js buquan -p 2-3
+
+# 测试单个指定生日
+node index.js buquan -s 1984-3-15-10-男
+
+# 测试5个随机用例
+node index.js buquan -r 5
+
+# 测试之前记录的失败用例
+node index.js buquan -f test
+
+# 组合使用：前3个预设 + 随机5个 + 单个指定
+node index.js buquan -p 3 -r 5 -s 1984-3-15-10-男
+```
+
+**测试内容：**
+- 测试八字补全功能中的冲突检测
+- 暗带：双冲（60组）+ 天克地刑（20组）
+- 拱三合和拱隔位：地支六冲（6个）
+- 检测补全结果与四柱中所有柱的冲突
+- 显示冲突类型、描述和目标柱信息
+- 支持预设、随机、单个、失败用例测试
+- 只依赖 API 服务器，不需要 SPA 服务器
+
+**测试结果输出：**
+- 补全地支列表
+- 拱三合、拱隔位、暗带数量
+- 每个补全结果的详细信息
+- 冲突检测结果（如有）
 
 ## 测试报告
 
@@ -465,6 +509,91 @@ cd /Users/yangyang/Downloads/Files/rili-bazi/server
 
 ## 更新日志
 
+### 2026-01-30
+
+**新增功能：**
+
+1. **八字补全冲突检测测试**
+   - 新增 `buquan` 测试类型：`node index.js buquan`
+   - 测试八字补全功能中的冲突检测逻辑
+   - 暗带：检测双冲（60组）和天克地刑（20组）
+   - 拱三合和拱隔位：检测地支六冲（6个）
+   - 支持预设、随机、单个、失败用例测试
+   - 显示详细的冲突信息：类型、描述、目标柱
+   - 只依赖 API 服务器，不需要 SPA 服务器
+   - 支持所有标准测试选项：`-p`、`-r`、`-s`、`-f`
+
+2. **干支组合关系测试**
+   - 新增 `pillar` 测试类型：`node index.js pillar`
+   - 测试干支组合关系：双冲（60组）、天克地刑（20组）、双合（30组）
+   - 测试 pillars 字段是否正确包含干支组合关系
+   - 只依赖 API 服务器，不需要 SPA 服务器
+   - 支持所有标准测试选项：`-p`、`-r`、`-s`、`-f`
+
+3. **天干相克和地支六破测试**
+   - 新增 `relations` 测试类型：`node index.js relations`
+   - 测试天干相克关系（6个）：甲克戊、乙克己、丙克庚、丁克辛、戊克壬、己克癸
+   - 测试地支六破关系（6个）：子酉破、卯午破、辰丑破、未戌破、寅亥破、申巳破
+   - 测试关系类型是否正确识别
+   - 只依赖 API 服务器，不需要 SPA 服务器
+   - 支持所有标准测试选项：`-p`、`-r`、`-s`、`-f`
+
+**测试脚本：**
+
+- 新增 `test/test_buquan_conflicts.js` 测试脚本
+  - 支持从命令行参数接收测试用例
+  - 保留默认测试用例，可直接运行
+  - 导出 `runBuQuanTests` 和 `testBuQuanCase` 函数
+
+- 修改 `test/test_pillar_relations.js`：
+  - 添加 `runPillarRelationsTests` 主函数
+  - 支持命令行参数和统一测试入口
+  - 导出测试函数供其他模块调用
+
+- 修改 `test/test_relationships.js`：
+  - 添加 `runRelationshipsTests` 主函数
+  - 支持命令行参数和统一测试入口
+  - 导出测试函数供其他模块调用
+
+**使用示例：**
+
+```bash
+# 八字补全冲突检测测试
+node index.js buquan
+
+# 干支组合关系测试
+node index.js pillar
+
+# 天干相克和地支六破测试
+node index.js relations
+
+# 测试前3个预设用例
+node index.js buquan -p 3
+node index.js pillar -p 3
+node index.js relations -p 3
+
+# 测试单个指定生日
+node index.js buquan -s 1984-3-15-10-男
+node index.js pillar -s 1990-5-15-10-男
+node index.js relations -s 1990-5-15-10-男
+
+# 测试5个随机用例
+node index.js buquan -r 5
+node index.js pillar -r 5
+node index.js relations -r 5
+
+# 组合使用
+node index.js buquan -p 3 -r 5 -s 1984-3-15-10-男
+node index.js pillar -p 3 -r 5 -s 1990-5-15-10-男
+node index.js relations -p 3 -r 5 -s 1990-5-15-10-男
+```
+
+**统一测试入口：**
+
+- 所有测试类型现已整合到 `test/index.js` 统一入口
+- 支持命令行参数和灵活的测试配置
+- 统一的测试报告和错误处理
+
 ### 2026-01-22
 
 **新增功能：**
@@ -496,6 +625,20 @@ cd /Users/yangyang/Downloads/Files/rili-bazi/server
 5. **测试报告增强**
    - 报告中显示测试用例类型（预设、随机、单个）
    - 更清晰地区分不同来源的测试用例
+
+4. **服务状态检查增强**
+   - 八字补全冲突检测测试（buquan）只需要 API 服务器
+   - 自动检查服务状态并给出明确的错误提示
+   - 支持灵活的测试用例组合和参数配置
+
+5. **八字补全冲突检测测试**
+   - 新增 `buquan` 测试类型：`node index.js buquan`
+   - 测试八字补全功能中的冲突检测逻辑
+   - 暗带：检测双冲（60组）和天克地刑（20组）
+   - 拱三合和拱隔位：检测地支六冲（6个）
+   - 支持预设、随机、单个、失败用例测试
+   - 显示详细的冲突信息：类型、描述、目标柱
+   - 只依赖 API 服务器，不需要 SPA 服务器
 
 **命令行参数变更：**
 
