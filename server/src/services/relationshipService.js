@@ -1,6 +1,30 @@
 const STEMS = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
 const BRANCHES = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
 
+/**
+ * 关系定义数组 GX 的格式说明
+ * 
+ * 每个关系定义的格式：[type, relationType, targetIndices, derivedIndex, description]
+ * 
+ * 参数说明：
+ * - type: 0=天干关系, 1=地支关系
+ * - relationType: 关系类型编号（见getRelationTypeInfo函数）
+ * - targetIndices: 涉及的地支/天干索引数组
+ * - derivedIndex: 推导出的元素索引或五行索引（见下方规则）
+ * - description: 关系描述
+ * 
+ * derivedIndex 规则：
+ * 1. 三个元素关系（三合、三会）：derivedIndex = 第三个地支的索引
+ *    示例：[1, 7, [2, 6, 10], 3, '寅午戌三合火'] → 3（午的索引）
+ * 2. 两个元素关系 + 有五行化合（五合、六合）：derivedIndex = 化出五行的索引
+ *    五行索引对照：0=金, 1=水, 2=木, 3=火, 4=土
+ *    示例：[0, 1, [0, 5], 4, '甲己合化土'] → 4（土的索引）
+ * 3. 两个元素关系 + 无五行化合（冲、刑、害、破、绝、半三合、半三会、暗合、夹）：derivedIndex = -1
+ *    示例：[1, 2, [0, 6], -1, '子午冲'] → -1（无推导）
+ * 
+ * 注意：半三合和半三会虽然涉及五行，但属于两个元素关系，derivedIndex使用五行索引而非-1
+ */
+
 const GX = [
   // ========== 天干关系 ==========
   // 天干相冲（4个）：阴阳属性相同，方位相对
@@ -88,10 +112,10 @@ const GX = [
   
   // 半三会（4个）：亥子半会水、寅卯半会木、巳午半会火、申酉半会金
   // 注意：子丑论六合不论半三会、卯辰论六害不论半三会、午未论六合不论半三会、酉戌论六害不论半三会
-  [1, 11, [2, 4], 3, '寅辰拱会卯'],
-  [1, 11, [5, 7], 6, '巳未拱会午'],
-  [1, 11, [8, 10], 9, '申戌拱会酉'],
-  [1, 11, [11, 1], 0, '亥丑拱会子'],
+  [1, 11, [11, 0], 1, '亥子半会水'],
+  [1, 11, [2, 3], 2, '寅卯半会木'],
+  [1, 11, [5, 6], 3, '巳午半会火'],
+  [1, 11, [8, 9], 0, '申酉半会金'],
   
   // 暗合（7个）：卯申暗合、午亥暗合、丑寅暗合、寅未暗合、子戌暗合、子辰暗合、巳酉暗合
   [1, 12, [3, 8], -1, '卯申暗合'],
@@ -118,6 +142,12 @@ const GX = [
   [1, 16, [2, 11], -1, '寅亥破'],
   [1, 16, [8, 5], -1, '申巳破'],
   
+  // 地支四绝（4个）：寅酉绝、卯申绝、午亥绝、子巳绝
+  [1, 20, [2, 9], -1, '寅酉绝'],
+  [1, 20, [3, 8], -1, '卯申绝'],
+  [1, 20, [6, 11], -1, '午亥绝'],
+  [1, 20, [0, 5], -1, '子巳绝'],
+  
   // 拱隔位/夹（12个）：子寅夹丑、丑卯夹寅、寅辰夹卯、卯巳夹辰、辰午夹巳、巳未夹午、午申夹未、未酉夹申、申戌夹酉、酉亥夹戌、戌子夹亥、亥丑夹子
   [1, 14, [0, 2], 1, '子寅夹丑'],
   [1, 14, [1, 3], 2, '丑卯夹寅'],
@@ -137,138 +167,138 @@ const PILLAR_RELATIONS = [
   // ========== 干支组合关系 ==========
   // 双冲（60组）：天干相冲且地支也相冲
   // 甲行双冲（6个）
-  { type: '双冲', stem1: 0, branch1: 0, stem2: 6, branch2: 6, desc: '甲子冲庚午' },
-  { type: '双冲', stem1: 0, branch1: 10, stem2: 6, branch2: 4, desc: '甲戌冲庚辰' },
-  { type: '双冲', stem1: 0, branch1: 8, stem2: 6, branch2: 2, desc: '甲申冲庚寅' },
-  { type: '双冲', stem1: 0, branch1: 6, stem2: 6, branch2: 0, desc: '甲午冲庚子' },
-  { type: '双冲', stem1: 0, branch1: 4, stem2: 6, branch2: 10, desc: '甲辰冲庚戌' },
-  { type: '双冲', stem1: 0, branch1: 2, stem2: 6, branch2: 8, desc: '甲寅冲庚申' },
+  { type: 17, stem1: 0, branch1: 0, stem2: 6, branch2: 6, desc: '甲子冲庚午' },
+  { type: 17, stem1: 0, branch1: 10, stem2: 6, branch2: 4, desc: '甲戌冲庚辰' },
+  { type: 17, stem1: 0, branch1: 8, stem2: 6, branch2: 2, desc: '甲申冲庚寅' },
+  { type: 17, stem1: 0, branch1: 6, stem2: 6, branch2: 0, desc: '甲午冲庚子' },
+  { type: 17, stem1: 0, branch1: 4, stem2: 6, branch2: 10, desc: '甲辰冲庚戌' },
+  { type: 17, stem1: 0, branch1: 2, stem2: 6, branch2: 8, desc: '甲寅冲庚申' },
   // 乙行双冲（6个）
-  { type: '双冲', stem1: 1, branch1: 1, stem2: 7, branch2: 7, desc: '乙丑冲辛未' },
-  { type: '双冲', stem1: 1, branch1: 11, stem2: 7, branch2: 5, desc: '乙亥冲辛巳' },
-  { type: '双冲', stem1: 1, branch1: 9, stem2: 7, branch2: 3, desc: '乙酉冲辛卯' },
-  { type: '双冲', stem1: 1, branch1: 7, stem2: 7, branch2: 1, desc: '乙未冲辛丑' },
-  { type: '双冲', stem1: 1, branch1: 5, stem2: 7, branch2: 11, desc: '乙巳冲辛亥' },
-  { type: '双冲', stem1: 1, branch1: 3, stem2: 7, branch2: 9, desc: '乙卯冲辛酉' },
+  { type: 17, stem1: 1, branch1: 1, stem2: 7, branch2: 7, desc: '乙丑冲辛未' },
+  { type: 17, stem1: 1, branch1: 11, stem2: 7, branch2: 5, desc: '乙亥冲辛巳' },
+  { type: 17, stem1: 1, branch1: 9, stem2: 7, branch2: 3, desc: '乙酉冲辛卯' },
+  { type: 17, stem1: 1, branch1: 7, stem2: 7, branch2: 1, desc: '乙未冲辛丑' },
+  { type: 17, stem1: 1, branch1: 5, stem2: 7, branch2: 11, desc: '乙巳冲辛亥' },
+  { type: 17, stem1: 1, branch1: 3, stem2: 7, branch2: 9, desc: '乙卯冲辛酉' },
   // 丙行双冲（6个）
-  { type: '双冲', stem1: 2, branch1: 2, stem2: 9, branch2: 9, desc: '丙寅冲癸酉' },
-  { type: '双冲', stem1: 2, branch1: 0, stem2: 9, branch2: 6, desc: '丙子冲壬午' },
-  { type: '双冲', stem1: 2, branch1: 10, stem2: 9, branch2: 4, desc: '丙戌冲壬辰' },
-  { type: '双冲', stem1: 2, branch1: 8, stem2: 9, branch2: 2, desc: '丙申冲壬寅' },
-  { type: '双冲', stem1: 2, branch1: 6, stem2: 9, branch2: 0, desc: '丙午冲壬子' },
-  { type: '双冲', stem1: 2, branch1: 4, stem2: 9, branch2: 10, desc: '丙辰冲壬戌' },
+  { type: 17, stem1: 2, branch1: 2, stem2: 9, branch2: 9, desc: '丙寅冲癸酉' },
+  { type: 17, stem1: 2, branch1: 0, stem2: 9, branch2: 6, desc: '丙子冲壬午' },
+  { type: 17, stem1: 2, branch1: 10, stem2: 9, branch2: 4, desc: '丙戌冲壬辰' },
+  { type: 17, stem1: 2, branch1: 8, stem2: 9, branch2: 2, desc: '丙申冲壬寅' },
+  { type: 17, stem1: 2, branch1: 6, stem2: 9, branch2: 0, desc: '丙午冲壬子' },
+  { type: 17, stem1: 2, branch1: 4, stem2: 9, branch2: 10, desc: '丙辰冲壬戌' },
   // 丁行双冲（6个）
-  { type: '双冲', stem1: 3, branch1: 3, stem2: 8, branch2: 8, desc: '丁卯冲壬申' },
-  { type: '双冲', stem1: 3, branch1: 1, stem2: 9, branch2: 7, desc: '丁丑冲癸未' },
-  { type: '双冲', stem1: 3, branch1: 11, stem2: 9, branch2: 5, desc: '丁亥冲癸巳' },
-  { type: '双冲', stem1: 3, branch1: 9, stem2: 9, branch2: 3, desc: '丁酉冲癸卯' },
-  { type: '双冲', stem1: 3, branch1: 7, stem2: 9, branch2: 1, desc: '丁未冲癸丑' },
-  { type: '双冲', stem1: 3, branch1: 5, stem2: 9, branch2: 11, desc: '丁巳冲癸亥' },
+  { type: 17, stem1: 3, branch1: 3, stem2: 8, branch2: 8, desc: '丁卯冲壬申' },
+  { type: 17, stem1: 3, branch1: 1, stem2: 9, branch2: 7, desc: '丁丑冲癸未' },
+  { type: 17, stem1: 3, branch1: 11, stem2: 9, branch2: 5, desc: '丁亥冲癸巳' },
+  { type: 17, stem1: 3, branch1: 9, stem2: 9, branch2: 3, desc: '丁酉冲癸卯' },
+  { type: 17, stem1: 3, branch1: 7, stem2: 9, branch2: 1, desc: '丁未冲癸丑' },
+  { type: 17, stem1: 3, branch1: 5, stem2: 9, branch2: 11, desc: '丁巳冲癸亥' },
   // 戊行双冲（6个）
-  { type: '双冲', stem1: 4, branch1: 4, stem2: 0, branch2: 10, desc: '戊辰冲甲戌' },
-  { type: '双冲', stem1: 4, branch1: 2, stem2: 0, branch2: 8, desc: '戊寅冲甲申' },
-  { type: '双冲', stem1: 4, branch1: 6, stem2: 0, branch2: 6, desc: '戊午冲甲子' },
-  { type: '双冲', stem1: 4, branch1: 10, stem2: 0, branch2: 4, desc: '戊戌冲甲辰' },
-  { type: '双冲', stem1: 4, branch1: 8, stem2: 0, branch2: 2, desc: '戊申冲甲寅' },
-  { type: '双冲', stem1: 4, branch1: 0, stem2: 0, branch2: 6, desc: '戊子冲甲午' },
+  { type: 17, stem1: 4, branch1: 4, stem2: 0, branch2: 10, desc: '戊辰冲甲戌' },
+  { type: 17, stem1: 4, branch1: 2, stem2: 0, branch2: 8, desc: '戊寅冲甲申' },
+  { type: 17, stem1: 4, branch1: 6, stem2: 0, branch2: 6, desc: '戊午冲甲子' },
+  { type: 17, stem1: 4, branch1: 10, stem2: 0, branch2: 4, desc: '戊戌冲甲辰' },
+  { type: 17, stem1: 4, branch1: 8, stem2: 0, branch2: 2, desc: '戊申冲甲寅' },
+  { type: 17, stem1: 4, branch1: 0, stem2: 0, branch2: 6, desc: '戊子冲甲午' },
   // 己行双冲（6个）
-  { type: '双冲', stem1: 5, branch1: 5, stem2: 1, branch2: 11, desc: '己巳冲乙亥' },
-  { type: '双冲', stem1: 5, branch1: 3, stem2: 1, branch2: 9, desc: '己卯冲乙酉' },
-  { type: '双冲', stem1: 5, branch1: 1, stem2: 1, branch2: 7, desc: '己丑冲乙未' },
-  { type: '双冲', stem1: 5, branch1: 11, stem2: 1, branch2: 5, desc: '己亥冲乙巳' },
-  { type: '双冲', stem1: 5, branch1: 9, stem2: 1, branch2: 3, desc: '己酉冲乙卯' },
-  { type: '双冲', stem1: 5, branch1: 7, stem2: 1, branch2: 1, desc: '己未冲乙丑' },
+  { type: 17, stem1: 5, branch1: 5, stem2: 1, branch2: 11, desc: '己巳冲乙亥' },
+  { type: 17, stem1: 5, branch1: 3, stem2: 1, branch2: 9, desc: '己卯冲乙酉' },
+  { type: 17, stem1: 5, branch1: 1, stem2: 1, branch2: 7, desc: '己丑冲乙未' },
+  { type: 17, stem1: 5, branch1: 11, stem2: 1, branch2: 5, desc: '己亥冲乙巳' },
+  { type: 17, stem1: 5, branch1: 9, stem2: 1, branch2: 3, desc: '己酉冲乙卯' },
+  { type: 17, stem1: 5, branch1: 7, stem2: 1, branch2: 1, desc: '己未冲乙丑' },
   // 庚行双冲（6个）
-  { type: '双冲', stem1: 6, branch1: 6, stem2: 2, branch2: 0, desc: '庚午冲丙子' },
-  { type: '双冲', stem1: 6, branch1: 4, stem2: 2, branch2: 10, desc: '庚辰冲丙戌' },
-  { type: '双冲', stem1: 6, branch1: 2, stem2: 2, branch2: 8, desc: '庚寅冲丙申' },
-  { type: '双冲', stem1: 6, branch1: 0, stem2: 2, branch2: 6, desc: '庚子冲丙午' },
-  { type: '双冲', stem1: 6, branch1: 10, stem2: 2, branch2: 4, desc: '庚戌冲丙辰' },
-  { type: '双冲', stem1: 6, branch1: 8, stem2: 2, branch2: 2, desc: '庚申冲丙寅' },
+  { type: 17, stem1: 6, branch1: 6, stem2: 2, branch2: 0, desc: '庚午冲丙子' },
+  { type: 17, stem1: 6, branch1: 4, stem2: 2, branch2: 10, desc: '庚辰冲丙戌' },
+  { type: 17, stem1: 6, branch1: 2, stem2: 2, branch2: 8, desc: '庚寅冲丙申' },
+  { type: 17, stem1: 6, branch1: 0, stem2: 2, branch2: 6, desc: '庚子冲丙午' },
+  { type: 17, stem1: 6, branch1: 10, stem2: 2, branch2: 4, desc: '庚戌冲丙辰' },
+  { type: 17, stem1: 6, branch1: 8, stem2: 2, branch2: 2, desc: '庚申冲丙寅' },
   // 辛行双冲（6个）
-  { type: '双冲', stem1: 7, branch1: 7, stem2: 3, branch2: 1, desc: '辛未冲丁丑' },
-  { type: '双冲', stem1: 7, branch1: 5, stem2: 3, branch2: 11, desc: '辛巳冲丁亥' },
-  { type: '双冲', stem1: 7, branch1: 3, stem2: 3, branch2: 9, desc: '辛卯冲丁酉' },
-  { type: '双冲', stem1: 7, branch1: 1, stem2: 3, branch2: 7, desc: '辛丑冲丁未' },
-  { type: '双冲', stem1: 7, branch1: 11, stem2: 3, branch2: 5, desc: '辛亥冲丁巳' },
-  { type: '双冲', stem1: 7, branch1: 9, stem2: 3, branch2: 3, desc: '辛酉冲丁卯' },
+  { type: 17, stem1: 7, branch1: 7, stem2: 3, branch2: 1, desc: '辛未冲丁丑' },
+  { type: 17, stem1: 7, branch1: 5, stem2: 3, branch2: 11, desc: '辛巳冲丁亥' },
+  { type: 17, stem1: 7, branch1: 3, stem2: 3, branch2: 9, desc: '辛卯冲丁酉' },
+  { type: 17, stem1: 7, branch1: 1, stem2: 3, branch2: 7, desc: '辛丑冲丁未' },
+  { type: 17, stem1: 7, branch1: 11, stem2: 3, branch2: 5, desc: '辛亥冲丁巳' },
+  { type: 17, stem1: 7, branch1: 9, stem2: 3, branch2: 3, desc: '辛酉冲丁卯' },
   // 壬行双冲（6个）
-  { type: '双冲', stem1: 8, branch1: 8, stem2: 4, branch2: 2, desc: '壬申冲戊寅' },
-  { type: '双冲', stem1: 8, branch1: 6, stem2: 4, branch2: 0, desc: '壬午冲戊子' },
-  { type: '双冲', stem1: 8, branch1: 4, stem2: 4, branch2: 10, desc: '壬辰冲戊戌' },
-  { type: '双冲', stem1: 8, branch1: 2, stem2: 4, branch2: 8, desc: '壬寅冲戊申' },
-  { type: '双冲', stem1: 8, branch1: 0, stem2: 4, branch2: 6, desc: '壬子冲戊午' },
-  { type: '双冲', stem1: 8, branch1: 10, stem2: 4, branch2: 4, desc: '壬戌冲戊辰' },
+  { type: 17, stem1: 8, branch1: 8, stem2: 4, branch2: 2, desc: '壬申冲戊寅' },
+  { type: 17, stem1: 8, branch1: 6, stem2: 4, branch2: 0, desc: '壬午冲戊子' },
+  { type: 17, stem1: 8, branch1: 4, stem2: 4, branch2: 10, desc: '壬辰冲戊戌' },
+  { type: 17, stem1: 8, branch1: 2, stem2: 4, branch2: 8, desc: '壬寅冲戊申' },
+  { type: 17, stem1: 8, branch1: 0, stem2: 4, branch2: 6, desc: '壬子冲戊午' },
+  { type: 17, stem1: 8, branch1: 10, stem2: 4, branch2: 4, desc: '壬戌冲戊辰' },
   // 癸行双冲（6个）
-  { type: '双冲', stem1: 9, branch1: 9, stem2: 5, branch2: 3, desc: '癸酉冲己卯' },
-  { type: '双冲', stem1: 9, branch1: 7, stem2: 5, branch2: 1, desc: '癸未冲己丑' },
-  { type: '双冲', stem1: 9, branch1: 5, stem2: 5, branch2: 11, desc: '癸巳冲己亥' },
-  { type: '双冲', stem1: 9, branch1: 3, stem2: 5, branch2: 9, desc: '癸卯冲己酉' },
-  { type: '双冲', stem1: 9, branch1: 1, stem2: 5, branch2: 7, desc: '癸丑冲己未' },
-  { type: '双冲', stem1: 9, branch1: 11, stem2: 5, branch2: 5, desc: '癸亥冲己巳' },
+  { type: 17, stem1: 9, branch1: 9, stem2: 5, branch2: 3, desc: '癸酉冲己卯' },
+  { type: 17, stem1: 9, branch1: 7, stem2: 5, branch2: 1, desc: '癸未冲己丑' },
+  { type: 17, stem1: 9, branch1: 5, stem2: 5, branch2: 11, desc: '癸巳冲己亥' },
+  { type: 17, stem1: 9, branch1: 3, stem2: 5, branch2: 9, desc: '癸卯冲己酉' },
+  { type: 17, stem1: 9, branch1: 1, stem2: 5, branch2: 7, desc: '癸丑冲己未' },
+  { type: 17, stem1: 9, branch1: 11, stem2: 5, branch2: 5, desc: '癸亥冲己巳' },
   
   // 天克地刑（自刑）=双冲（20组）：天干相克且地支自刑
   // 乙亥#己亥系列（5个）
-  { type: '天克地刑', stem1: 1, branch1: 11, stem2: 5, branch2: 11, desc: '乙亥克己亥' },
-  { type: '天克地刑', stem1: 1, branch1: 11, stem2: 7, branch2: 11, desc: '乙亥克辛亥' },
-  { type: '天克地刑', stem1: 3, branch1: 11, stem2: 7, branch2: 11, desc: '丁亥克辛亥' },
-  { type: '天克地刑', stem1: 3, branch1: 11, stem2: 9, branch2: 11, desc: '丁亥克癸亥' },
-  { type: '天克地刑', stem1: 5, branch1: 11, stem2: 9, branch2: 11, desc: '己亥克癸亥' },
+  { type: 18, stem1: 1, branch1: 11, stem2: 5, branch2: 11, desc: '乙亥克己亥' },
+  { type: 18, stem1: 1, branch1: 11, stem2: 7, branch2: 11, desc: '乙亥克辛亥' },
+  { type: 18, stem1: 3, branch1: 11, stem2: 7, branch2: 11, desc: '丁亥克辛亥' },
+  { type: 18, stem1: 3, branch1: 11, stem2: 9, branch2: 11, desc: '丁亥克癸亥' },
+  { type: 18, stem1: 5, branch1: 11, stem2: 9, branch2: 11, desc: '己亥克癸亥' },
   // 戊辰#壬辰系列（5个）
-  { type: '天克地刑', stem1: 4, branch1: 4, stem2: 8, branch2: 4, desc: '戊辰克壬辰' },
-  { type: '天克地刑', stem1: 4, branch1: 4, stem2: 0, branch2: 4, desc: '戊辰克甲辰' },
-  { type: '天克地刑', stem1: 6, branch1: 4, stem2: 0, branch2: 4, desc: '庚辰克甲辰' },
-  { type: '天克地刑', stem1: 6, branch1: 4, stem2: 2, branch2: 4, desc: '庚辰克丙辰' },
-  { type: '天克地刑', stem1: 8, branch1: 4, stem2: 2, branch2: 4, desc: '壬辰克丙辰' },
+  { type: 18, stem1: 4, branch1: 4, stem2: 8, branch2: 4, desc: '戊辰克壬辰' },
+  { type: 18, stem1: 4, branch1: 4, stem2: 0, branch2: 4, desc: '戊辰克甲辰' },
+  { type: 18, stem1: 6, branch1: 4, stem2: 0, branch2: 4, desc: '庚辰克甲辰' },
+  { type: 18, stem1: 6, branch1: 4, stem2: 2, branch2: 4, desc: '庚辰克丙辰' },
+  { type: 18, stem1: 8, branch1: 4, stem2: 2, branch2: 4, desc: '壬辰克丙辰' },
   // 庚午#丙午系列（5个）
-  { type: '天克地刑', stem1: 6, branch1: 6, stem2: 2, branch2: 6, desc: '庚午克丙午' },
-  { type: '天克地刑', stem1: 6, branch1: 6, stem2: 0, branch2: 6, desc: '庚午克甲午' },
-  { type: '天克地刑', stem1: 8, branch1: 6, stem2: 2, branch2: 6, desc: '壬午克丙午' },
-  { type: '天克地刑', stem1: 8, branch1: 6, stem2: 4, branch2: 6, desc: '壬午克戊午' },
-  { type: '天克地刑', stem1: 0, branch1: 6, stem2: 4, branch2: 6, desc: '甲午克戊午' },
+  { type: 18, stem1: 6, branch1: 6, stem2: 2, branch2: 6, desc: '庚午克丙午' },
+  { type: 18, stem1: 6, branch1: 6, stem2: 0, branch2: 6, desc: '庚午克甲午' },
+  { type: 18, stem1: 8, branch1: 6, stem2: 2, branch2: 6, desc: '壬午克丙午' },
+  { type: 18, stem1: 8, branch1: 6, stem2: 4, branch2: 6, desc: '壬午克戊午' },
+  { type: 18, stem1: 0, branch1: 6, stem2: 4, branch2: 6, desc: '甲午克戊午' },
   // 癸酉#己酉系列（5个）
-  { type: '天克地刑', stem1: 9, branch1: 9, stem2: 5, branch2: 9, desc: '癸酉克己酉' },
-  { type: '天克地刑', stem1: 9, branch1: 9, stem2: 3, branch2: 9, desc: '癸酉克丁酉' },
-  { type: '天克地刑', stem1: 1, branch1: 9, stem2: 5, branch2: 9, desc: '乙酉克己酉' },
-  { type: '天克地刑', stem1: 1, branch1: 9, stem2: 7, branch2: 9, desc: '乙酉克辛酉' },
-  { type: '天克地刑', stem1: 3, branch1: 9, stem2: 7, branch2: 9, desc: '丁酉克辛酉' },
+  { type: 18, stem1: 9, branch1: 9, stem2: 5, branch2: 9, desc: '癸酉克己酉' },
+  { type: 18, stem1: 9, branch1: 9, stem2: 3, branch2: 9, desc: '癸酉克丁酉' },
+  { type: 18, stem1: 1, branch1: 9, stem2: 5, branch2: 9, desc: '乙酉克己酉' },
+  { type: 18, stem1: 1, branch1: 9, stem2: 7, branch2: 9, desc: '乙酉克辛酉' },
+  { type: 18, stem1: 3, branch1: 9, stem2: 7, branch2: 9, desc: '丁酉克辛酉' },
   
   // 双合（30组）：天干相合且地支也相合
   // 甲己双合（6个）
-  { type: '双合', stem1: 0, branch1: 0, stem2: 5, branch2: 1, desc: '甲子合己丑' },
-  { type: '双合', stem1: 0, branch1: 2, stem2: 5, branch2: 11, desc: '甲寅合己亥' },
-  { type: '双合', stem1: 0, branch1: 4, stem2: 5, branch2: 9, desc: '甲辰合己酉' },
-  { type: '双合', stem1: 0, branch1: 6, stem2: 5, branch2: 7, desc: '甲午合己未' },
-  { type: '双合', stem1: 0, branch1: 8, stem2: 5, branch2: 5, desc: '甲申合己巳' },
-  { type: '双合', stem1: 0, branch1: 10, stem2: 5, branch2: 3, desc: '甲戌合己卯' },
+  { type: 19, stem1: 0, branch1: 0, stem2: 5, branch2: 1, desc: '甲子合己丑' },
+  { type: 19, stem1: 0, branch1: 2, stem2: 5, branch2: 11, desc: '甲寅合己亥' },
+  { type: 19, stem1: 0, branch1: 4, stem2: 5, branch2: 9, desc: '甲辰合己酉' },
+  { type: 19, stem1: 0, branch1: 6, stem2: 5, branch2: 7, desc: '甲午合己未' },
+  { type: 19, stem1: 0, branch1: 8, stem2: 5, branch2: 5, desc: '甲申合己巳' },
+  { type: 19, stem1: 0, branch1: 10, stem2: 5, branch2: 3, desc: '甲戌合己卯' },
   // 丙辛双合（6个）
-  { type: '双合', stem1: 2, branch1: 0, stem2: 7, branch2: 1, desc: '丙子合辛丑' },
-  { type: '双合', stem1: 2, branch1: 2, stem2: 7, branch2: 11, desc: '丙寅合辛亥' },
-  { type: '双合', stem1: 2, branch1: 4, stem2: 7, branch2: 9, desc: '丙辰合辛酉' },
-  { type: '双合', stem1: 2, branch1: 6, stem2: 7, branch2: 7, desc: '丙午合辛未' },
-  { type: '双合', stem1: 2, branch1: 8, stem2: 7, branch2: 5, desc: '丙申合辛巳' },
-  { type: '双合', stem1: 2, branch1: 10, stem2: 7, branch2: 3, desc: '丙戌合辛卯' },
+  { type: 19, stem1: 2, branch1: 0, stem2: 7, branch2: 1, desc: '丙子合辛丑' },
+  { type: 19, stem1: 2, branch1: 2, stem2: 7, branch2: 11, desc: '丙寅合辛亥' },
+  { type: 19, stem1: 2, branch1: 4, stem2: 7, branch2: 9, desc: '丙辰合辛酉' },
+  { type: 19, stem1: 2, branch1: 6, stem2: 7, branch2: 7, desc: '丙午合辛未' },
+  { type: 19, stem1: 2, branch1: 8, stem2: 7, branch2: 5, desc: '丙申合辛巳' },
+  { type: 19, stem1: 2, branch1: 10, stem2: 7, branch2: 3, desc: '丙戌合辛卯' },
   // 戊癸双合（6个）
-  { type: '双合', stem1: 4, branch1: 0, stem2: 9, branch2: 1, desc: '戊子合癸丑' },
-  { type: '双合', stem1: 4, branch1: 2, stem2: 9, branch2: 11, desc: '戊寅合癸亥' },
-  { type: '双合', stem1: 4, branch1: 4, stem2: 9, branch2: 9, desc: '戊辰合癸酉' },
-  { type: '双合', stem1: 4, branch1: 6, stem2: 9, branch2: 7, desc: '戊午合癸未' },
-  { type: '双合', stem1: 4, branch1: 8, stem2: 9, branch2: 5, desc: '戊申合癸巳' },
-  { type: '双合', stem1: 4, branch1: 10, stem2: 9, branch2: 3, desc: '戊戌合癸卯' },
+  { type: 19, stem1: 4, branch1: 0, stem2: 9, branch2: 1, desc: '戊子合癸丑' },
+  { type: 19, stem1: 4, branch1: 2, stem2: 9, branch2: 11, desc: '戊寅合癸亥' },
+  { type: 19, stem1: 4, branch1: 4, stem2: 9, branch2: 9, desc: '戊辰合癸酉' },
+  { type: 19, stem1: 4, branch1: 6, stem2: 9, branch2: 7, desc: '戊午合癸未' },
+  { type: 19, stem1: 4, branch1: 8, stem2: 9, branch2: 5, desc: '戊申合癸巳' },
+  { type: 19, stem1: 4, branch1: 10, stem2: 9, branch2: 3, desc: '戊戌合癸卯' },
   // 庚乙双合（6个）
-  { type: '双合', stem1: 6, branch1: 0, stem2: 1, branch2: 1, desc: '庚子合乙丑' },
-  { type: '双合', stem1: 6, branch1: 2, stem2: 1, branch2: 11, desc: '庚寅合乙亥' },
-  { type: '双合', stem1: 6, branch1: 4, stem2: 1, branch2: 9, desc: '庚辰合乙酉' },
-  { type: '双合', stem1: 6, branch1: 6, stem2: 1, branch2: 7, desc: '庚午合乙未' },
-  { type: '双合', stem1: 6, branch1: 8, stem2: 1, branch2: 5, desc: '庚申合乙巳' },
-  { type: '双合', stem1: 6, branch1: 10, stem2: 1, branch2: 3, desc: '庚戌合乙卯' },
+  { type: 19, stem1: 6, branch1: 0, stem2: 1, branch2: 1, desc: '庚子合乙丑' },
+  { type: 19, stem1: 6, branch1: 2, stem2: 1, branch2: 11, desc: '庚寅合乙亥' },
+  { type: 19, stem1: 6, branch1: 4, stem2: 1, branch2: 9, desc: '庚辰合乙酉' },
+  { type: 19, stem1: 6, branch1: 6, stem2: 1, branch2: 7, desc: '庚午合乙未' },
+  { type: 19, stem1: 6, branch1: 8, stem2: 1, branch2: 5, desc: '庚申合乙巳' },
+  { type: 19, stem1: 6, branch1: 10, stem2: 1, branch2: 3, desc: '庚戌合乙卯' },
   // 壬丁双合（6个）
-  { type: '双合', stem1: 8, branch1: 0, stem2: 3, branch2: 1, desc: '壬子合丁丑' },
-  { type: '双合', stem1: 8, branch1: 2, stem2: 3, branch2: 11, desc: '壬寅合丁亥' },
-  { type: '双合', stem1: 8, branch1: 4, stem2: 3, branch2: 9, desc: '壬辰合丁酉' },
-  { type: '双合', stem1: 8, branch1: 6, stem2: 3, branch2: 7, desc: '壬午合丁未' },
-  { type: '双合', stem1: 8, branch1: 8, stem2: 3, branch2: 5, desc: '壬申合丁巳' },
-  { type: '双合', stem1: 8, branch1: 10, stem2: 3, branch2: 3, desc: '壬戌合丁卯' }
+  { type: 19, stem1: 8, branch1: 0, stem2: 3, branch2: 1, desc: '壬子合丁丑' },
+  { type: 19, stem1: 8, branch1: 2, stem2: 3, branch2: 11, desc: '壬寅合丁亥' },
+  { type: 19, stem1: 8, branch1: 4, stem2: 3, branch2: 9, desc: '壬辰合丁酉' },
+  { type: 19, stem1: 8, branch1: 6, stem2: 3, branch2: 7, desc: '壬午合丁未' },
+  { type: 19, stem1: 8, branch1: 8, stem2: 3, branch2: 5, desc: '壬申合丁巳' },
+  { type: 19, stem1: 8, branch1: 10, stem2: 3, branch2: 3, desc: '壬戌合丁卯' }
 ];
 
 const PILLAR_NAMES = ['年', '月', '日', '时'];
@@ -318,30 +348,87 @@ function array_keys(input) {
   return Object.keys(input);
 }
 
-function getRelationType(type) {
-  const types = {
-    0: '冲',
-    1: '合',
-    2: '冲',
-    3: '刑',
-    4: '刑',
-    5: '刑',
-    6: '合',
-    7: '合',
-    8: '合',
-    9: '合',
-    10: '会',
-    11: '会',
-    12: '合',
-    13: '害',
-    14: '夹',
-    15: '克',
-    16: '破',
-    17: '双冲',
-    18: '天克地刑',
-    19: '双合'
+/**
+ * 获取关系类型信息（大类和细类）
+ * @param {number} type - 关系类型编号
+ * @returns {Object} 包含大类和细类的对象
+ * 
+ * 返回格式：{ type: '大类', detailType: '细类' }
+ * 
+ * 字段说明：
+ * - type: 大类（抽象分类），用于前端判断显示
+ * - detailType: 细类（具体类型），用于前端描述显示
+ * 
+ * 大类分类：
+ * - 冲：天干相冲、地支六冲
+ * - 合：天干五合、地支六合、地支三合、半三合、拱合、暗合
+ * - 会：地支三会、半三会
+ * - 刑：地支三刑（三刑）、地支相刑、地支自刑
+ * - 害：地支六害
+ * - 破：地支六破
+ * - 绝：地支四绝
+ * - 夹：夹
+ * - 克：天干相克
+ * - 双冲：双冲、天克地刑
+ * - 双合：双合
+ */
+function getRelationTypeInfo(type) {
+  const typeInfo = {
+    // 天干关系
+    0: { type: '冲', detailType: '天干相冲' },
+    1: { type: '合', detailType: '天干五合' },
+    15: { type: '克', detailType: '天干相克' },
+    
+    // 地支关系 - 冲类
+    2: { type: '冲', detailType: '地支六冲' },
+    
+    // 地支关系 - 刑类
+    3: { type: '刑', detailType: '地支三刑（三刑）' },
+    4: { type: '刑', detailType: '地支相刑' },
+    5: { type: '刑', detailType: '地支自刑' },
+    
+    // 地支关系 - 合类
+    6: { type: '合', detailType: '地支六合' },
+    7: { type: '合', detailType: '地支三合' },
+    8: { type: '合', detailType: '半三合' },
+    9: { type: '合', detailType: '拱合' },
+    12: { type: '合', detailType: '暗合' },
+    
+    // 地支关系 - 会类
+    10: { type: '会', detailType: '地支三会' },
+    11: { type: '会', detailType: '半三会' },
+    
+    // 地支关系 - 其他
+    13: { type: '害', detailType: '地支六害' },
+    14: { type: '夹', detailType: '夹' },
+    16: { type: '破', detailType: '地支六破' },
+    20: { type: '绝', detailType: '地支四绝' },
+    
+    // 干支组合关系
+    17: { type: '双冲', detailType: '双冲' },
+    18: { type: '双冲', detailType: '天克地刑' },
+    19: { type: '双合', detailType: '双合' }
   };
-  return types[type] || '';
+  
+  return typeInfo[type] || { type: '', detailType: '' };
+}
+
+/**
+ * 获取关系大类（用于判断显示）
+ * @param {number} type - 关系类型编号
+ * @returns {string} 大类名称
+ */
+function getRelationCategory(type) {
+  return getRelationTypeInfo(type).type;
+}
+
+/**
+ * 获取关系细类（用于描述显示）
+ * @param {number} type - 关系类型编号
+ * @returns {string} 细类名称
+ */
+function getRelationDetail(type) {
+  return getRelationTypeInfo(type).detailType;
 }
 
 function calculateRelationships(pillars) {
@@ -421,12 +508,14 @@ function calculateRelationships(pillars) {
 
   for (const [fds, gx] of list[0]) {
     const pillars = Object.keys(fds).map(idx => PILLAR_NAMES[idx]).join('+');
-    result.stems.push({ source: pillars, desc: gx[4], type: getRelationType(gx[1]) });
+    const typeInfo = getRelationTypeInfo(gx[1]);
+    result.stems.push({ source: pillars, desc: gx[4], type: typeInfo.type, detailType: typeInfo.detailType });
   }
 
   for (const [fds, gx] of list[1]) {
     const pillars = Object.keys(fds).map(idx => PILLAR_NAMES[idx]).join('+');
-    result.branches.push({ source: pillars, desc: gx[4], type: getRelationType(gx[1]) });
+    const typeInfo = getRelationTypeInfo(gx[1]);
+    result.branches.push({ source: pillars, desc: gx[4], type: typeInfo.type, detailType: typeInfo.detailType });
   }
 
   const pillarRelations = [];
@@ -442,11 +531,13 @@ function calculateRelationships(pillars) {
       const branch1 = BRANCHES[relation.branch1];
       const stem2 = STEMS[relation.stem2];
       const branch2 = BRANCHES[relation.branch2];
+      const typeInfo = getRelationTypeInfo(relation.type);
       
       pillarRelations.push({
         source: pillarNames,
         desc: relation.desc,
-        type: relation.type,
+        type: typeInfo.type,
+        detailType: typeInfo.detailType,
         details: `${stem1}${branch1}与${stem2}${branch2}`
       });
     }
@@ -470,5 +561,7 @@ module.exports = {
   count,
   pc_array_power_set,
   array_keys,
-  getRelationType
+  getRelationTypeInfo,
+  getRelationCategory,
+  getRelationDetail
 };
