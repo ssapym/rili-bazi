@@ -16,6 +16,7 @@ const WuxingEnergyCalculator = require('./wuxingEnergy');
 const { calculateShenSha } = require('./shenshaService');
 const { calculateRelationships } = require('./relationshipService');
 const { calculateBuQuan } = require('./buquanService');
+const { calculateGenji } = require('./genjiService');
 const { QIONG_TONG_ADVICE, ZI_PING_PATTERNS, WUXING_SUPPORT, WUXING_CONTROL, WUXING_CHILD, WUXING_OFFICER, WUXING_CONTROLLED, STEM_ELEMENT_MAP } = require('./baziConstants');
 
 const STEMS = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
@@ -173,6 +174,7 @@ class BaziService {
       const relationships = calculateRelationships(pillars);
       const shensha = calculateShenSha(pillars, isMan);
       const buquan = calculateBuQuan(pillars);
+      const genji = calculateGenji(pillars, buquan);
       const wuxingCount = this.energyCalculator.calculateWuxingCount(pillars, buquan);
       const fortune = this.buildFortuneInfo(childLimit, pillars, isMan);
 
@@ -181,6 +183,7 @@ class BaziService {
         sizhu: this.buildSiZhu(pillars, shensha),
         chonghe: relationships,
         buquan: buquan,
+        genji: genji,
         nengliang: {
           wuxing: {
             ...wuxingEnergy,
@@ -276,6 +279,7 @@ class BaziService {
       const relationships = calculateRelationships(pillars);
       const shensha = calculateShenSha(pillars, isMan);
       const buquan = calculateBuQuan(pillars);
+      const genji = calculateGenji(pillars, buquan);
       const wuxingCount = this.energyCalculator.calculateWuxingCount(pillars, buquan);
       const fortune = this.buildFortuneInfo(childLimit, pillars, isMan);
 
@@ -284,6 +288,7 @@ class BaziService {
         sizhu: this.buildSiZhu(pillars, shensha),
         chonghe: relationships,
         buquan: buquan,
+        genji: genji,
         nengliang: {
           wuxing: {
             ...wuxingEnergy,

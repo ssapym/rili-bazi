@@ -106,6 +106,7 @@ http://localhost:8000/api/bazi?year=1997&month=4&day=11&hour=10&gender=2
 | data.sizhu | object | 四柱信息 |
 | data.chonghe | object | 干支关系 |
 | data.buquan | object | 八字补全 |
+| data.genji | object | 根基判断 |
 | data.nengliang | object | 能量分析 |
 | data.geju | object | 格局分析 |
 | data.dayun | object | 大运信息 |
@@ -320,3 +321,112 @@ def get_bazi_with_true_solar():
 | timezoneOffset | float | 时区偏移（小时） |
 | adjustedHour | int | 调整后时辰 |
 | adjustedMinute | int | 调整后分钟 |
+
+## 根基判断说明
+
+根基判断功能用于判断四柱天干和暗带天干是否有根，根据传统八字理论，每个天干在某些地支中有根。
+
+**判断范围**：
+
+1. **四柱天干**：年干、月干、日干、时干
+2. **暗带天干**：buquan.andai 中推导出的天干
+
+**判断地支**：
+
+1. **四柱地支**：年支、月支、日支、时支
+2. **补全地支**：
+   - 拱三合推导的地支
+   - 拱隔位（夹）推导的地支
+   - 暗带推导的地支
+
+**天干根基映射表**：
+
+| 天干 | 有根的地支 |
+|------|-----------|
+| 甲 | 亥、寅、卯、未 |
+| 乙 | 寅、卯、辰、未 |
+| 丙 | 寅、巳、午、戌 |
+| 丁 | 巳、午、未、戌 |
+| 戊 | 寅、巳、午、辰、戌 |
+| 己 | 未、午、巳、丑 |
+| 庚 | 巳、申、酉、丑 |
+| 辛 | 酉、申、戌、丑 |
+| 壬 | 申、亥、子、辰 |
+| 癸 | 亥、子、丑、辰 |
+
+**genji 字段说明**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| hasRoot | bool | 四柱天干和暗带天干是否有根 |
+| rootCount | int | 有根的天干数量 |
+| rootDetails | array | 每个天干的详细根基信息 |
+
+**rootDetails 数组项说明**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| stem | string | 天干名称 |
+| position | string | 天干位置（年干、月干、日干、时干、暗带） |
+| hasRoot | bool | 该天干是否有根 |
+| originalRoots | array | 原始地支中的根基 |
+| derivedRoots | array | 补全地支中的根基 |
+| allRoots | array | 所有根基汇总 |
+
+**根基对象说明**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| branch | string | 地支名称 |
+| position | string | 地支位置（年支、月支、日支、时支、拱三合、拱隔位（夹）、暗带） |
+| type | string | 根基类型（original=原始地支、derived=补全地支） |
+| source | string | 推导来源（仅补全地支有此字段） |
+| derivedType | string | 推导类型（gongsanhe=拱三合、gonggewei=拱隔位、andai=暗带，仅补全地支有此字段） |
+
+**返回示例**：
+
+```json
+{
+  "genji": {
+    "hasRoot": true,
+    "rootCount": 5,
+    "rootDetails": [
+      {
+        "stem": "甲",
+        "position": "年干",
+        "hasRoot": true,
+        "originalRoots": [
+          {
+            "branch": "寅",
+            "position": "年支",
+            "type": "original"
+          }
+        ],
+        "derivedRoots": [
+          {
+            "branch": "卯",
+            "position": "拱三合",
+            "source": "年+日",
+            "derivedType": "gongsanhe",
+            "type": "derived"
+          }
+        ],
+        "allRoots": [
+          {
+            "branch": "寅",
+            "position": "年支",
+            "type": "original"
+          },
+          {
+            "branch": "卯",
+            "position": "拱三合",
+            "source": "年+日",
+            "derivedType": "gongsanhe",
+            "type": "derived"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
