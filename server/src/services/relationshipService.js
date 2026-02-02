@@ -563,5 +563,6 @@ module.exports = {
   array_keys,
   getRelationTypeInfo,
   getRelationCategory,
-  getRelationDetail
+  getRelationDetail,
+  getRelationType: getRelationCategory
 };
