@@ -169,13 +169,13 @@ class BaziService {
       const dayBranch = pillars.day.earthBranch;
 
       const wuxingEnergy = this.energyCalculator.calculate(pillars);
-      const tenStarEnergy = this.calculateTenStarEnergy(pillars);
       const analysis = this.analyzePattern(pillars, wuxingEnergy, isMan);
       const relationships = calculateRelationships(pillars);
       const shensha = calculateShenSha(pillars, isMan);
       const buquan = calculateBuQuan(pillars);
       const genji = calculateGenji(pillars, buquan);
       const wuxingCount = this.energyCalculator.calculateWuxingCount(pillars, buquan);
+      const tenStarEnergy = this.calculateTenStarEnergy(pillars, buquan);
       const fortune = this.buildFortuneInfo(childLimit, pillars, isMan);
 
       const result = {
@@ -274,13 +274,13 @@ class BaziService {
       const dayBranch = pillars.day.earthBranch;
 
       const wuxingEnergy = this.energyCalculator.calculate(pillars);
-      const tenStarEnergy = this.calculateTenStarEnergy(pillars);
       const analysis = this.analyzePattern(pillars, wuxingEnergy, isMan);
       const relationships = calculateRelationships(pillars);
       const shensha = calculateShenSha(pillars, isMan);
       const buquan = calculateBuQuan(pillars);
       const genji = calculateGenji(pillars, buquan);
       const wuxingCount = this.energyCalculator.calculateWuxingCount(pillars, buquan);
+      const tenStarEnergy = this.calculateTenStarEnergy(pillars, buquan);
       const fortune = this.buildFortuneInfo(childLimit, pillars, isMan);
 
       const result = {
@@ -389,7 +389,7 @@ class BaziService {
     };
   }
 
-  calculateTenStarEnergy(pillars) {
+  calculateTenStarEnergy(pillars, buquan) {
     const dayIdx = STEMS.indexOf(pillars.day.heavenStem);
     const tenStarCounts = {};
     const tenStarEnergy = {};
@@ -444,18 +444,330 @@ class BaziService {
     const totalCount = Object.values(tenStarCounts).reduce((a, b) => a + b, 0);
 
     const byCount = Object.entries(tenStarCounts).map(([name, count]) => ({
-      ming: name,
-      geshu: count,
-      baifengbi: parseFloat(((count / totalCount) * 100).toFixed(1))
-    })).sort((a, b) => b.geshu - a.geshu);
+      name: name,
+      count: count,
+      percentage: parseFloat(((count / totalCount) * 100).toFixed(1))
+    })).sort((a, b) => b.count - a.count);
 
     const byEnergy = this.calculateTenStarEnergyByType(pillars);
 
+    const distribution = this.calculateShiShenDistribution(pillars, buquan);
+    const tianTouDiCang = this.calculateTianTouDiCang(pillars, buquan);
+
     return {
-      zonggeshu: totalCount,
+      totalCount: totalCount,
       byCount: byCount,
-      byEnergy: byEnergy
+      byEnergy: byEnergy,
+      distribution: distribution,
+      tianTouDiCang: tianTouDiCang
     };
+  }
+
+  /**
+   * 计算十神分布
+   * 
+   * @param {Object} pillars - 四柱信息
+   * @param {Object} buquan - 八字补全信息
+   * @returns {Object} 十神分布对象
+   */
+  calculateShiShenDistribution(pillars, buquan) {
+    const dayIdx = STEMS.indexOf(pillars.day.heavenStem);
+    const distribution = {};
+
+    const stemToTenStar = (stem, key) => {
+      const stemIdx = STEMS.indexOf(stem);
+      let diff = (stemIdx - dayIdx + 10) % 10;
+      const tenStar = TEN_STARS[diff];
+      return tenStar;
+    };
+
+    const pillarKeyMap = {
+      '年': 'niangan',
+      '月': 'yuegan',
+      '日': 'rigan',
+      '时': 'shigan'
+    };
+
+    const branchKeyMap = {
+      '年': 'nianzhi',
+      '月': 'yuezhi',
+      '日': 'rizhi',
+      '时': 'shizhi'
+    };
+
+    const pillarKeyMap2 = {
+      '年': 'year',
+      '月': 'month',
+      '日': 'day',
+      '时': 'hour'
+    };
+
+    ['年', '月', '日', '时'].forEach(key => {
+      const pillar = pillars[pillarKeyMap2[key]];
+      if (!pillar) return;
+
+      const stemKey = pillarKeyMap[key];
+      const branchKey = branchKeyMap[key];
+
+      distribution[stemKey] = stemToTenStar(pillar.heavenStem, key);
+
+      const hideHeavenStems = pillar.hideHeavenStems || [];
+      if (hideHeavenStems.length > 0) {
+        const levelMap = { '本气': '本气', '中气': '中气', '余气': '余气' };
+        const shishenWithLevel = hideHeavenStems.map(h => {
+          return `${h.tenStar}（${levelMap[h.level]}）`;
+        }).join('、');
+        distribution[branchKey] = shishenWithLevel;
+      }
+    });
+
+    if (buquan) {
+      if (buquan.andai && buquan.andai.length > 0) {
+        buquan.andai.forEach(item => {
+          if (item.derivedStem) {
+            const tenStar = stemToTenStar(item.derivedStem, 'andai');
+            if (tenStar) {
+              distribution['andaiTiangan'] = tenStar;
+            }
+          }
+        });
+      }
+
+      if (buquan.gongsanhe && buquan.gongsanhe.length > 0) {
+        buquan.gongsanhe.forEach(item => {
+          const branch = item.derivedBranch;
+          const branchPillar = this.findBranchPillar(pillars, branch);
+          if (branchPillar) {
+            const hideHeavenStems = branchPillar.hideHeavenStems || [];
+            if (hideHeavenStems.length > 0) {
+              const levelMap = { '本气': '本气', '中气': '中气', '余气': '余气' };
+              const shishenWithLevel = hideHeavenStems.map(h => {
+                return `${h.tenStar}（${levelMap[h.level]}）`;
+              }).join('、');
+              distribution['gongsanhe'] = shishenWithLevel;
+            }
+          }
+        });
+      }
+
+      if (buquan.gonggewei && buquan.gonggewei.length > 0) {
+        buquan.gonggewei.forEach(item => {
+          const branch = item.derivedBranch;
+          const branchPillar = this.findBranchPillar(pillars, branch);
+          if (branchPillar) {
+            const hideHeavenStems = branchPillar.hideHeavenStems || [];
+            if (hideHeavenStems.length > 0) {
+              const levelMap = { '本气': '本气', '中气': '中气', '余气': '余气' };
+              const shishenWithLevel = hideHeavenStems.map(h => {
+                return `${h.tenStar}（${levelMap[h.level]}）`;
+              }).join('、');
+              distribution['gonggewei'] = shishenWithLevel;
+            }
+          }
+        });
+      }
+
+      if (buquan.andai && buquan.andai.length > 0) {
+        buquan.andai.forEach(item => {
+          const branch = item.derivedBranch;
+          const branchPillar = this.findBranchPillar(pillars, branch);
+          if (branchPillar) {
+            const hideHeavenStems = branchPillar.hideHeavenStems || [];
+            if (hideHeavenStems.length > 0) {
+              const levelMap = { '本气': '本气', '中气': '中气', '余气': '余气' };
+              const shishenWithLevel = hideHeavenStems.map(h => {
+                return `${h.tenStar}（${levelMap[h.level]}）`;
+              }).join('、');
+              distribution['andaiDizhi'] = shishenWithLevel;
+            }
+          }
+        });
+      }
+    }
+
+    return distribution;
+  }
+
+  /**
+   * 查找地支所在的柱
+   * 
+   * @param {Object} pillars - 四柱信息
+   * @param {string} branch - 地支名称
+   * @returns {Object|null} 柱信息
+   */
+  findBranchPillar(pillars, branch) {
+    if (pillars.year.earthBranch === branch) return pillars.year;
+    if (pillars.month.earthBranch === branch) return pillars.month;
+    if (pillars.day.earthBranch === branch) return pillars.day;
+    if (pillars.hour.earthBranch === branch) return pillars.hour;
+    return null;
+  }
+
+  /**
+   * 计算天透地藏
+   * 
+   * @param {Object} pillars - 四柱信息
+   * @param {Object} buquan - 八字补全信息
+   * @returns {Array} 天透地藏数组
+   */
+  calculateTianTouDiCang(pillars, buquan) {
+    const dayIdx = STEMS.indexOf(pillars.day.heavenStem);
+    const tenStarTianTou = {};
+    const tenStarDiCang = {};
+
+    const stemToTenStar = (stem) => {
+      const stemIdx = STEMS.indexOf(stem);
+      const diff = (stemIdx - dayIdx + 10) % 10;
+      return TEN_STARS[diff];
+    };
+
+    const allStems = [
+      { key: '年干', stem: pillars.year.heavenStem, type: '四柱天干' },
+      { key: '月干', stem: pillars.month.heavenStem, type: '四柱天干' },
+      { key: '日干', stem: pillars.day.heavenStem, type: '四柱天干' },
+      { key: '时干', stem: pillars.hour.heavenStem, type: '四柱天干' }
+    ];
+
+    allStems.forEach(({ key, stem, type }) => {
+      const tenStar = stemToTenStar(stem);
+      if (!tenStarTianTou[tenStar]) {
+        tenStarTianTou[tenStar] = {
+          positions: [],
+          details: []
+        };
+      }
+      tenStarTianTou[tenStar].positions.push(key);
+      tenStarTianTou[tenStar].details.push({ position: key, type });
+    });
+
+    if (buquan && buquan.andai && buquan.andai.length > 0) {
+      buquan.andai.forEach(item => {
+        if (item.derivedStem) {
+          const tenStar = stemToTenStar(item.derivedStem);
+          if (tenStar) {
+            if (!tenStarTianTou[tenStar]) {
+              tenStarTianTou[tenStar] = {
+                positions: [],
+                details: []
+              };
+            }
+            tenStarTianTou[tenStar].positions.push('暗带天干');
+            tenStarTianTou[tenStar].details.push({ position: '暗带天干', type: '暗带天干' });
+          }
+        }
+      });
+    }
+
+    const allBranches = [
+      { key: '年支', branch: pillars.year.earthBranch, type: '四柱地支', hideHeavenStems: pillars.year.hideHeavenStems },
+      { key: '月支', branch: pillars.month.earthBranch, type: '四柱地支', hideHeavenStems: pillars.month.hideHeavenStems },
+      { key: '日支', branch: pillars.day.earthBranch, type: '四柱地支', hideHeavenStems: pillars.day.hideHeavenStems },
+      { key: '时支', branch: pillars.hour.earthBranch, type: '四柱地支', hideHeavenStems: pillars.hour.hideHeavenStems }
+    ];
+
+    allBranches.forEach(({ key, branch, type, hideHeavenStems }) => {
+      if (hideHeavenStems && hideHeavenStems.length > 0) {
+        hideHeavenStems.forEach(h => {
+          const tenStar = h.tenStar;
+          if (!tenStarDiCang[tenStar]) {
+            tenStarDiCang[tenStar] = {
+              positions: [],
+              details: []
+            };
+          }
+          tenStarDiCang[tenStar].positions.push(`${key}（${h.level}）`);
+          tenStarDiCang[tenStar].details.push({ position: key, level: h.level, type });
+        });
+      }
+    });
+
+    if (buquan) {
+      if (buquan.gongsanhe && buquan.gongsanhe.length > 0) {
+        buquan.gongsanhe.forEach(item => {
+          const branch = item.derivedBranch;
+          const branchPillar = this.findBranchPillar(pillars, branch);
+          if (branchPillar) {
+            const hideHeavenStems = branchPillar.hideHeavenStems || [];
+            if (hideHeavenStems && hideHeavenStems.length > 0) {
+              hideHeavenStems.forEach(h => {
+                const tenStar = h.tenStar;
+                if (!tenStarDiCang[tenStar]) {
+                  tenStarDiCang[tenStar] = {
+                    positions: [],
+                    details: []
+                  };
+                }
+                tenStarDiCang[tenStar].positions.push(`拱三合（${h.level}）`);
+                tenStarDiCang[tenStar].details.push({ position: '拱三合', level: h.level, type: '补全地支' });
+              });
+            }
+          }
+        });
+      }
+
+      if (buquan.gonggewei && buquan.gonggewei.length > 0) {
+        buquan.gonggewei.forEach(item => {
+          const branch = item.derivedBranch;
+          const branchPillar = this.findBranchPillar(pillars, branch);
+          if (branchPillar) {
+            const hideHeavenStems = branchPillar.hideHeavenStems || [];
+            if (hideHeavenStems && hideHeavenStems.length > 0) {
+              hideHeavenStems.forEach(h => {
+                const tenStar = h.tenStar;
+                if (!tenStarDiCang[tenStar]) {
+                  tenStarDiCang[tenStar] = {
+                    positions: [],
+                    details: []
+                  };
+                }
+                tenStarDiCang[tenStar].positions.push(`拱隔位（夹）(${h.level})`);
+                tenStarDiCang[tenStar].details.push({ position: '拱隔位（夹）', level: h.level, type: '补全地支' });
+              });
+            }
+          }
+        });
+      }
+
+      if (buquan.andai && buquan.andai.length > 0) {
+        buquan.andai.forEach(item => {
+          const branch = item.derivedBranch;
+          const branchPillar = this.findBranchPillar(pillars, branch);
+          if (branchPillar) {
+            const hideHeavenStems = branchPillar.hideHeavenStems || [];
+            if (hideHeavenStems && hideHeavenStems.length > 0) {
+              hideHeavenStems.forEach(h => {
+                const tenStar = h.tenStar;
+                if (!tenStarDiCang[tenStar]) {
+                  tenStarDiCang[tenStar] = {
+                    positions: [],
+                    details: []
+                  };
+                }
+                tenStarDiCang[tenStar].positions.push(`暗带地支（${h.level}）`);
+                tenStarDiCang[tenStar].details.push({ position: '暗带地支', level: h.level, type: '补全地支' });
+              });
+            }
+          }
+        });
+      }
+    }
+
+    const tianTouDiCang = [];
+    Object.keys(tenStarTianTou).forEach(tenStar => {
+      if (tenStarDiCang[tenStar]) {
+        const tianTouPositions = tenStarTianTou[tenStar].positions.join('、');
+        const diCangPositions = tenStarDiCang[tenStar].positions.join('、');
+        tianTouDiCang.push({
+          name: tenStar,
+          tianTouPosition: tianTouPositions,
+          tianTouDetails: tenStarTianTou[tenStar].details,
+          diCangPosition: diCangPositions,
+          diCangDetails: tenStarDiCang[tenStar].details
+        });
+      }
+    });
+
+    return tianTouDiCang;
   }
 
   calculateTenStarEnergyByType(pillars) {
