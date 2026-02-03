@@ -17,10 +17,7 @@ const { calculateShenSha } = require('./shenshaService');
 const { calculateRelationships } = require('./relationshipService');
 const { calculateBuQuan } = require('./buquanService');
 const { calculateGenji } = require('./genjiService');
-const { QIONG_TONG_ADVICE, ZI_PING_PATTERNS, WUXING_SUPPORT, WUXING_CONTROL, WUXING_CHILD, WUXING_OFFICER, WUXING_CONTROLLED, STEM_ELEMENT_MAP } = require('./baziConstants');
-
-const STEMS = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
-const BRANCHES = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
+const { QIONG_TONG_ADVICE, ZI_PING_PATTERNS, WUXING_SUPPORT, WUXING_CONTROL, WUXING_CHILD, WUXING_OFFICER, WUXING_CONTROLLED, STEM_ELEMENT_MAP, STEMS, BRANCHES } = require('./baziConstants');
 
 const TEN_STARS = ['比肩', '劫财', '食神', '伤官', '偏财', '正财', '七杀', '正官', '偏印', '正印'];
 
