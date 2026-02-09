@@ -109,12 +109,18 @@ const GX = [
   [1, 10, [8, 9, 10], 0, '申酉戌会金'],
   [1, 10, [11, 0, 1], 1, '亥子丑会水'],
   
+  // 地支拱会（4个）：寅辰拱会卯、巳未拱会午、申戌拱会酉、亥丑拱会子
+  [1, 11, [2, 4], 3, '寅辰拱会卯'],
+  [1, 11, [5, 7], 6, '巳未拱会午'],
+  [1, 11, [8, 10], 9, '申戌拱会酉'],
+  [1, 11, [11, 1], 0, '亥丑拱会子'],
+  
   // 半三会（4个）：亥子半会水、寅卯半会木、巳午半会火、申酉半会金
   // 注意：子丑论六合不论半三会、卯辰论六害不论半三会、午未论六合不论半三会、酉戌论六害不论半三会
-  [1, 11, [11, 0], 1, '亥子半会水'],
-  [1, 11, [2, 3], 2, '寅卯半会木'],
-  [1, 11, [5, 6], 3, '巳午半会火'],
-  [1, 11, [8, 9], 0, '申酉半会金'],
+  [1, 22, [11, 0], 1, '亥子半会水'],
+  [1, 22, [2, 3], 2, '寅卯半会木'],
+  [1, 22, [5, 6], 3, '巳午半会火'],
+  [1, 22, [8, 9], 0, '申酉半会金'],
   
   // 暗合（7个）：卯申暗合、午亥暗合、丑寅暗合、寅未暗合、子戌暗合、子辰暗合、巳酉暗合
   [1, 12, [3, 8], -1, '卯申暗合'],
@@ -395,7 +401,8 @@ function getRelationTypeInfo(type) {
     
     // 地支关系 - 会类
     10: { type: '会', detailType: '地支三会' },
-    11: { type: '会', detailType: '半三会' },
+    11: { type: '会', detailType: '拱会' },
+    22: { type: '会', detailType: '半三会' },
     
     // 地支关系 - 其他
     13: { type: '害', detailType: '地支六害' },
@@ -446,10 +453,10 @@ function calculateRelationships(pillars) {
 
   const list = [[], []];
   const excludes = {
-    4: 3,
-    8: 7,
-    9: 7,
-    11: 10
+    4: 3, //相刑要把三刑(3)排除
+    8: 7, //半合要把三合(7)排除
+    9: 7, //拱合要把三合(7)排除
+    11: 10 //拱会要把三会(10)排除
   };
 
   for (const gx of GX) {
@@ -512,6 +519,11 @@ function calculateRelationships(pillars) {
   }
 
   for (const [fds, gx] of list[1]) {
+    // 跳过"夹"关系（type=14），因为"夹"是八字补全用的，不是地支关系
+    if (gx[1] === 14) {
+      continue;
+    }
+    
     const pillars = Object.keys(fds).map(idx => PILLAR_NAMES[idx]).join('+');
     const typeInfo = getRelationTypeInfo(gx[1]);
     result.branches.push({ source: pillars, desc: gx[4], type: typeInfo.type, detailType: typeInfo.detailType });

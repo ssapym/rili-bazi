@@ -400,17 +400,23 @@ function resetFailedCases() {
  */
 function parseOptions(args) {
   const options = {
-    preset: 'all',
+    preset: 'skip',
     random: 'skip',
     single: [],
-    failed: 'skip'
+    failed: 'skip',
+    all: false,
+    help: false
   };
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     const nextArg = args[i + 1];
 
-    if (arg === '--preset' || arg === '-p') {
+    if (arg === '--help' || arg === '-h') {
+      options.help = true;
+    } else if (arg === '--all' || arg === '-a') {
+      options.all = true;
+    } else if (arg === '--preset' || arg === '-p') {
       if (nextArg && !nextArg.startsWith('-')) {
         options.preset = nextArg;
         i++;
@@ -870,15 +876,18 @@ function printHelp() {
   console.log('');
   console.log('选项:');
   console.log('');
+  console.log('  --all, -a         测试全部');
+  console.log('                    预设全部 + 失败用例 + 10个随机用例');
+  console.log('');
   console.log('  --preset, -p      预设生日组合');
-  console.log('    all             - 全部预设用例（默认）');
+  console.log('    all             - 全部预设用例');
   console.log('    数字            - 前N个，例如: 3');
   console.log('    范围            - 指定范围，例如: 2-3');
-  console.log('    skip            - 跳过预设用例，只测试随机或单个');
+  console.log('    skip            - 跳过预设用例（默认）');
   console.log('');
   console.log('  --random, -r      随机生日组合数量');
   console.log('    数字            - 随机生成N个，例如: 10');
-  console.log('    skip            - 跳过随机用例');
+  console.log('    skip            - 跳过随机用例（默认）');
   console.log('');
   console.log('  --single, -s      指定单个生日组合');
   console.log('    格式: 年-月-日-时:分-性别');
@@ -896,17 +905,18 @@ function printHelp() {
   console.log('    skip            - 跳过失败用例（默认）');
   console.log('');
   console.log('组合示例:');
-  console.log('  node index.js compare                          # 测试全部预设用例');
-  console.log('  node index.js compare -p 3                     # 测试前3个预设用例');
-  console.log('  node index.js compare -p 2-3                   # 测试第2-3个预设用例');
-  console.log('  node index.js compare -p 3 -r 5                # 测试前3个预设 + 随机5个');
-  console.log('  node index.js compare -r 10                    # 只测试随机生成的10个');
-  console.log('  node index.js compare -s 1990-5-15-10-男        # 测试单个指定生日');
+  console.log('  node index.js compare -a                     # 测试全部（预设+失败+随机10个）');
+  console.log('  node index.js compare -p all                 # 测试全部预设用例');
+  console.log('  node index.js compare -p 3                   # 测试前3个预设用例');
+  console.log('  node index.js compare -p 2-3                 # 测试第2-3个预设用例');
+  console.log('  node index.js compare -p 3 -r 5              # 测试前3个预设 + 随机5个');
+  console.log('  node index.js compare -r 10                   # 只测试随机生成的10个');
+  console.log('  node index.js compare -s 1990-5-15-10-男      # 测试单个指定生日');
   console.log('  node index.js compare -s 1990-5-15-10:30-F     # 测试单个指定生日（带分钟）');
-  console.log('  node index.js compare -f test                  # 测试之前记录的失败用例');
-  console.log('  node index.js compare -f test -r 5             # 测试失败用例 + 随机5个');
-  console.log('  node index.js compare -f clear                 # 清空失败用例记录');
-  console.log('  node index.js compare -f reset                 # 重置失败用例状态（可重新测试）');
+  console.log('  node index.js compare -f test                 # 测试之前记录的失败用例');
+  console.log('  node index.js compare -f test -r 5            # 测试失败用例 + 随机5个');
+  console.log('  node index.js compare -f clear                # 清空失败用例记录');
+  console.log('  node index.js compare -f reset                # 重置失败用例状态（可重新测试）');
   console.log('  node index.js compare -p 3 -f test -r 5 -s 1990-5-15-10-M  # 完整组合');
   console.log('  node index.js detail 5                         # 详细测试前5个预置用例');
   console.log('  node index.js api                              # API测试');
@@ -914,6 +924,11 @@ function printHelp() {
   console.log('  node index.js pillar                           # 干支组合关系测试');
   console.log('  node index.js relations                         # 天干相克和地支六破测试');
   console.log('  node index.js help                             # 显示帮助信息');
+  console.log('');
+  console.log('注意:');
+  console.log('  - 必须指定测试参数（-p、-r、-s、-f、-a）');
+  console.log('  - 不指定参数时，默认显示帮助信息');
+  console.log('  - -a 参数等同于 -p all -f test -r 10');
   console.log('');
   console.log('测试顺序:');
   console.log('  1. 预设用例');
@@ -944,6 +959,19 @@ async function main() {
 
   const options = parseOptions(args.slice(1));
 
+  // 处理--help参数
+  if (options.help) {
+    printHelp();
+    return;
+  }
+
+  // 处理--all参数
+  if (options.all) {
+    options.preset = 'all';
+    options.random = '10';
+    options.failed = 'test';
+  }
+
   if (options.failed === 'clear') {
     clearFailedCases();
     return;
@@ -951,6 +979,14 @@ async function main() {
 
   if (options.failed === 'reset') {
     resetFailedCases();
+    return;
+  }
+
+  // 如果没有指定任何测试参数，显示帮助
+  if (options.preset === 'skip' && options.random === 'skip' && options.single.length === 0 && options.failed === 'skip' && !options.all) {
+    console.log('⚠️  未指定测试参数，显示帮助信息');
+    console.log('');
+    printHelp();
     return;
   }
 

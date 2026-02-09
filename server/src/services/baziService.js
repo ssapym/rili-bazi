@@ -178,7 +178,7 @@ class BaziService {
       const result = {
         baseInfo: this.buildJiBenXinXi(SolarDay.fromYmd(year, month, day), pillars, gender, hour, minute),
         sizhu: this.buildSiZhu(pillars, shensha),
-        chonghe: relationships,
+        relationships: relationships,
         buquan: buquan,
         genji: genji,
         nengliang: {
@@ -283,7 +283,7 @@ class BaziService {
       const result = {
         baseInfo: this.buildJiBenXinXi(SolarDay.fromYmd(year, month, day), pillars, gender, hour, minute),
         sizhu: this.buildSiZhu(pillars, shensha),
-        chonghe: relationships,
+        relationships: relationships,
         buquan: buquan,
         genji: genji,
         nengliang: {

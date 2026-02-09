@@ -10,158 +10,69 @@
  */
 
 const puppeteer = require('puppeteer-core');
-const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { TEST_CASES, BEIJING_DONGCHENG_LONGITUDE, CHROME_PATH } = require('./test_config');
+
+const { TEST_CASES, CHROME_PATH } = require('./test_config');
+const { saveFailedCases, markAsFixed, callAPI, formatFourPillars, formatBirthday, getCaseTypeEnglish } = require('./report_utils');
+const { compareFullResults } = require('./comparators');
+const { generateHTMLReport } = require('./report_generators/html_report_generator');
+const { generateSummaryJSON, generateSingleTestJSON, generateLegacyJSONReport } = require('./report_generators/json_report_generator');
 
 const RESULTS_DIR = path.join(__dirname, 'results');
-const FAILED_CASES_FILE = path.join(__dirname, 'failed_cases.json');
 
 /**
- * 保存失败用例到文件
- * 会自动去重，避免重复保存相同的失败用例
- * 如果用例之前已修复，会更新状态为"失败"
- * @param {Array} failedCases - 失败用例数组
+ * 生成目录名称
+ * 格式：日期_时间_测试个数，例如：20260205_203045_1000
+ * @param {number} testCount - 测试用例数量
+ * @returns {string} 目录名称
  */
-function saveFailedCases(failedCases) {
-  try {
-    let existingCases = [];
-    if (fs.existsSync(FAILED_CASES_FILE)) {
-      const data = fs.readFileSync(FAILED_CASES_FILE, 'utf8');
-      existingCases = JSON.parse(data);
-    }
+function generateReportDirName(testCount) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  
+  return `${year}${month}${day}_${hours}${minutes}${seconds}_${testCount}`;
+}
 
-    const existingKeys = new Map();
-    existingCases.forEach(tc => {
-      const key = `${tc.year}-${tc.month}-${tc.day}-${tc.hour}-${tc.gender}`;
-      existingKeys.set(key, tc);
-    });
+/**
+ * 生成单个测试结果文件名
+ * 格式：YYYYMMDDHHMM_G_P/F.json，例如：199001011200_M_P.json
+ * @param {Object} tc - 测试用例
+ * @param {string} status - 状态（passed/failed）
+ * @returns {string} 文件名
+ */
+function generateSingleFileName(tc, status) {
+  const genderCode = tc.gender === '男' || tc.gender === 'M' ? 'M' : 'F';
+  const statusCode = status === 'passed' ? 'P' : 'F';
+  
+  const year = String(tc.year).padStart(4, '0');
+  const month = String(tc.month).padStart(2, '0');
+  const day = String(tc.day).padStart(2, '0');
+  const hour = String(tc.hour).padStart(2, '0');
+  const minute = String((tc.minute || 0)).padStart(2, '0');
+  
+  return `${year}${month}${day}${hour}${minute}_${genderCode}_${statusCode}.json`;
+}
 
-    const newCases = [];
-    const updatedCases = [];
-
-    failedCases.forEach(tc => {
-      const key = `${tc.year}-${tc.month}-${tc.day}-${tc.hour}-${tc.gender}`;
-      const existing = existingKeys.get(key);
-      
-      if (!existing) {
-        newCases.push({
-          ...tc,
-          status: '失败'
-        });
-      } else if (existing.status === '已修复' || existing.status === '已清空') {
-        updatedCases.push({
-          ...existing,
-          status: '失败',
-          failedAt: new Date().toISOString(),
-          mismatches: tc.mismatches
-        });
-      }
-    });
-
-    if (newCases.length > 0 || updatedCases.length > 0) {
-      const allCases = [...existingCases, ...newCases];
-      
-      updatedCases.forEach(updated => {
-        const index = allCases.findIndex(tc => 
-          tc.year === updated.year && 
-          tc.month === updated.month && 
-          tc.day === updated.day && 
-          tc.hour === updated.hour && 
-          tc.gender === updated.gender
-        );
-        if (index !== -1) {
-          allCases[index] = updated;
-        }
-      });
-      
-      fs.writeFileSync(FAILED_CASES_FILE, JSON.stringify(allCases, null, 2), 'utf8');
-      const totalSaved = newCases.length + updatedCases.length;
-      console.log(`\n💾 已保存 ${totalSaved} 个失败用例到 ${FAILED_CASES_FILE}`);
-      if (updatedCases.length > 0) {
-        console.log(`   其中 ${updatedCases.length} 个之前已修复的用例重新标记为失败`);
-      }
-    }
-  } catch (error) {
-    console.warn(`保存失败用例文件失败: ${error.message}`);
+/**
+ * 确保结果目录存在
+ */
+function ensureResultsDir() {
+  if (!fs.existsSync(RESULTS_DIR)) {
+    fs.mkdirSync(RESULTS_DIR, { recursive: true });
   }
 }
 
 /**
- * 标记失败用例为已修复
- * 当失败用例测试通过时，更新其状态为"已修复"
- * @param {Array} fixedCases - 已修复的失败用例数组
- */
-function markAsFixed(fixedCases) {
-  try {
-    if (fixedCases.length === 0) return;
-    
-    if (!fs.existsSync(FAILED_CASES_FILE)) {
-      console.log(`\n⚠️  失败用例文件不存在，无法更新状态`);
-      return;
-    }
-
-    const data = fs.readFileSync(FAILED_CASES_FILE, 'utf8');
-    const existingCases = JSON.parse(data);
-    
-    let updatedCount = 0;
-    
-    fixedCases.forEach(fixedTc => {
-      const index = existingCases.findIndex(tc => 
-        tc.year === fixedTc.year && 
-        tc.month === fixedTc.month && 
-        tc.day === fixedTc.day && 
-        tc.hour === fixedTc.hour && 
-        tc.gender === fixedTc.gender
-      );
-      
-      if (index !== -1 && existingCases[index].status === '失败') {
-        existingCases[index] = {
-          ...existingCases[index],
-          status: '已修复',
-          fixedAt: new Date().toISOString()
-        };
-        updatedCount++;
-      }
-    });
-    
-    if (updatedCount > 0) {
-      fs.writeFileSync(FAILED_CASES_FILE, JSON.stringify(existingCases, null, 2), 'utf8');
-      console.log(`\n✅ 已将 ${updatedCount} 个失败用例标记为已修复`);
-    }
-  } catch (error) {
-    console.warn(`更新失败用例状态失败: ${error.message}`);
-  }
-}
-
-/**
- * 调用API获取八字计算结果
- * @param {Object} params - 请求参数对象
- * @returns {Promise<Object>} API返回的计算结果
- */
-function callAPI(params) {
-  return new Promise((resolve, reject) => {
-    const query = new URLSearchParams(params).toString();
-    http.get(`http://localhost:8000/api/bazi?${query}`, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          resolve(JSON.parse(data));
-        } catch (e) {
-          reject(e);
-        }
-      });
-    }).on('error', reject);
-  });
-}
-
-/**
- * 测试SPA页面获取八字计算结果
- * @param {Object} tc - 测试用例对象
+ * 测试SPA页面
+ * @param {Object} tc - 测试用例
  * @param {Object} browser - Puppeteer浏览器实例
- * @returns {Promise<Object>} SPA返回的计算结果
+ * @returns {Promise<Object>} SPA返回的数据
  */
 async function testSPA(tc, browser) {
   let page = null;
@@ -350,720 +261,176 @@ async function testSPA(tc, browser) {
 }
 
 /**
- * 对比四柱八字
- * @param {Object} api - API返回的四柱数据
- * @param {Object} spa - SPA返回的四柱数据
- * @param {string} pillarName - 柱名称（年柱、月柱、日柱、时柱）
- * @returns {Array} 差异数组
+ * 运行单个测试用例
+ * @param {Object} tc - 测试用例
+ * @param {Object} browser - Puppeteer浏览器实例
+ * @param {string} reportDir - 报告目录路径
+ * @returns {Promise<Object>} 测试结果
  */
-function comparePillars(api, spa, pillarName) {
-  const mismatches = [];
-  if (!api || !spa) {
-    mismatches.push(`数据缺失: api=${!!api} spa=${!!spa}`);
-    return mismatches;
-  }
-  
-  const apiHeavenStem = api.tiangan || '';
-  const spaHeavenStem = spa.heavenStem || '';
-  if (apiHeavenStem !== spaHeavenStem) {
-    mismatches.push(`天干: API=${apiHeavenStem} SPA=${spaHeavenStem}`);
-  }
-  
-  const apiEarthBranch = api.dizhi || '';
-  const spaEarthBranch = spa.earthBranch || '';
-  if (apiEarthBranch !== spaEarthBranch) {
-    mismatches.push(`地支: API=${apiEarthBranch} SPA=${spaEarthBranch}`);
-  }
-  
-  const apiTenStar = api.zhuxing || '';
-  const spaTenStar = spa.tenStar || '';
-  if (pillarName !== '日柱' && apiTenStar !== spaTenStar) {
-    mismatches.push(`十神: API=${apiTenStar} SPA=${spaTenStar}`);
-  }
-  
-  const apiTerrain = api.xingyun || '';
-  const spaTerrain = spa.terrain || '';
-  if (apiTerrain !== spaTerrain) {
-    mismatches.push(`地势: API=${apiTerrain} SPA=${spaTerrain}`);
-  }
-  
-  const apiTerrainSelf = api.zizuo || '';
-  const spaTerrainSelf = spa.terrainSelf || '';
-  if (apiTerrainSelf !== spaTerrainSelf) {
-    mismatches.push(`自坐: API=${apiTerrainSelf} SPA=${spaTerrainSelf}`);
-  }
-  
-  const apiHide = api.canggan || [];
-  const spaHide = spa.hideHeavenStems || [];
-  if (apiHide.length !== spaHide.length) {
-    mismatches.push(`藏干数量: API=${apiHide.length} SPA=${spaHide.length}`);
-  } else {
-    for (let i = 0; i < apiHide.length; i++) {
-      if (apiHide[i].ming !== spaHide[i]?.name ||
-          apiHide[i].shishen !== spaHide[i]?.tenStar) {
-        mismatches.push(`藏干[${i}]: API=(${apiHide[i].ming},${apiHide[i].shishen}) SPA=(${spaHide[i]?.name || ''},${spaHide[i]?.tenStar || ''})`);
+async function runTest(tc, browser, reportDir) {
+  console.log(`\n============================================================`);
+  console.log(`测试: ${tc.year}年${tc.month}月${tc.day}日 ${tc.hour}:00 ${tc.gender} (${tc.age}岁) (${tc.caseType})`);
+  console.log(`============================================================`);
+
+  try {
+    const apiData = await callAPI({
+      year: tc.year,
+      month: tc.month,
+      day: tc.day,
+      hour: tc.hour,
+      minute: tc.minute || 0,
+      gender: tc.gender === '男' || tc.gender === 1 || tc.gender === 'M' ? 1 : 2
+    });
+
+    const spaData = await testSPA(tc, browser);
+
+    const comparison = compareFullResults(apiData, spaData);
+    const isPassed = comparison.mismatches.length === 0;
+
+    const result = {
+      caseType: tc.caseType,
+      birthday: formatBirthday(tc),
+      fourPillars: formatFourPillars(apiData),
+      status: isPassed ? 'passed' : 'failed',
+      mismatchCount: comparison.mismatches.length,
+      acceptableDifferences: comparison.acceptableDifferences,
+      mismatches: comparison.mismatches,
+      comparisonItems: comparison.comparisonItems,
+      apiRawData: apiData,
+      spaRawData: spaData,
+      detailedComparison: {
+        fourPillars: {
+          status: comparison.comparisonItems['四柱'],
+          api: {
+            year: `${apiData.sizhu?.nian?.tiangan || ''}${apiData.sizhu?.nian?.dizhi || ''}`,
+            month: `${apiData.sizhu?.yue?.tiangan || ''}${apiData.sizhu?.yue?.dizhi || ''}`,
+            day: `${apiData.sizhu?.ri?.tiangan || ''}${apiData.sizhu?.ri?.dizhi || ''}`,
+            hour: `${apiData.sizhu?.shi?.tiangan || ''}${apiData.sizhu?.shi?.dizhi || ''}`
+          },
+          spa: {
+            year: `${spaData.year?.heavenStem || ''}${spaData.year?.earthBranch || ''}`,
+            month: `${spaData.month?.heavenStem || ''}${spaData.month?.earthBranch || ''}`,
+            day: `${spaData.day?.heavenStem || ''}${spaData.day?.earthBranch || ''}`,
+            hour: `${spaData.hour?.heavenStem || ''}${spaData.hour?.earthBranch || ''}`
+          }
+        },
+        nayin: {
+          status: comparison.comparisonItems['纳音'],
+          api: {
+            year: apiData.sizhu?.nian?.nayin || '',
+            month: apiData.sizhu?.yue?.nayin || '',
+            day: apiData.sizhu?.ri?.nayin || '',
+            hour: apiData.sizhu?.shi?.nayin || ''
+          },
+          spa: {
+            year: spaData.year?.sound || '',
+            month: spaData.month?.sound || '',
+            day: spaData.day?.sound || '',
+            hour: spaData.hour?.sound || ''
+          }
+        },
+        relationships: {
+          status: comparison.comparisonItems['地支关系'],
+          api: apiData.relationships || apiData.chonghe || {},
+          spa: spaData.relationships || spaData.chonghe || {}
+        }
       }
-    }
-  }
-  
-  const apiExtra = api.kongwang || [];
-  const spaExtra = spa.extraEarthBranches || [];
-  if (JSON.stringify(apiExtra.sort()) !== JSON.stringify(spaExtra.sort())) {
-    mismatches.push(`空亡: API=${apiExtra.join(',')} SPA=${spaExtra.join(',')}`);
-  }
-  
-  return mismatches;
-}
-
-/**
- * 对比纳音
- * @param {Object} api - API返回的纳音数据
- * @param {Object} spa - SPA返回的纳音数据
- * @returns {Array} 差异数组
- */
-function compareNayin(api, spa) {
-  const mismatches = [];
-  const nayinMap = {
-    nian: '年柱',
-    yue: '月柱',
-    ri: '日柱',
-    shi: '时柱'
-  };
-  for (const [key, label] of Object.entries(nayinMap)) {
-    if (api.sizhu?.[key]?.nayin !== spa[key]) {
-      mismatches.push(`${label}纳音: API=${api.sizhu?.[key]?.nayin} SPA=${spa[key] || 'N/A'}`);
-    }
-  }
-  return mismatches;
-}
-
-/**
- * 对比五行能量
- * @param {Object} api - API返回的五行能量数据
- * @param {Object} spa - SPA返回的五行能量数据
- * @returns {Array} 差异数组
- */
-function compareWuxingEnergy(api, spa) {
-  const mismatches = [];
-  if (!api || !spa) {
-    if (!api && !spa) return mismatches;
-    mismatches.push(`五行能量数据缺失: api=${!!api} spa=${!!spa}`);
-    return mismatches;
-  }
-  
-  // 比对总分
-  if (api.totalScore !== undefined && spa.totalScore !== undefined) {
-    if (Math.abs((api.totalScore || 0) - (spa.totalScore || 0)) > 0.01) {
-      mismatches.push(`五行总分: API=${api.totalScore?.toFixed(2)} SPA=${spa.totalScore?.toFixed(2)}`);
-    }
-  }
-  
-  // 比对平衡度
-  if (api.balance !== undefined && spa.balanceIndex !== undefined) {
-    const balanceDiff = Math.abs((api.balance || 0) - (spa.balanceIndex || 0));
-    if (balanceDiff > 0.001) {
-      mismatches.push(`平衡度: API=${api.balance?.toFixed(3)} SPA=${spa.balanceIndex?.toFixed(3)} (差异: ${balanceDiff.toFixed(3)})`);
-    }
-  }
-  
-  const apiElements = api.elements || [];
-  const spaElements = spa.elements || [];
-  for (const apiEl of apiElements) {
-    const spaEl = spaElements.find(e => e.name === apiEl.name);
-    if (!spaEl) continue;
-    const scoreDiff = Math.abs((apiEl.score || 0) - (spaEl.score || 0));
-    if (scoreDiff > 2) {
-      mismatches.push(`元素${apiEl.name}得分: API=${apiEl.score?.toFixed(2)} SPA=${spaEl.score?.toFixed(2)}`);
-    }
-  }
-  return mismatches;
-}
-
-/**
- * 对比大运
- * @param {Object} api - API返回的大运数据
- * @param {Object} spa - SPA返回的大运数据
- * @returns {Array} 差异数组
- */
-function compareDayun(api, spa) {
-  const mismatches = [];
-  const toleranceNotes = [];
-  if (!api || !spa) {
-    if (!api && !spa) return mismatches;
-    mismatches.push(`大运数据缺失: api=${!!api} spa=${!!spa}`);
-    return mismatches;
-  }
-  
-  // 比对命宫
-  if (api.minggong?.name !== spa.minggong?.name) {
-    mismatches.push(`命宫: API=${api.minggong?.name}(${api.minggong?.sound}) SPA=${spa.minggong?.name}(${spa.minggong?.sound})`);
-  }
-  
-  // 比对身宫
-  if (api.shengong?.name !== spa.shengong?.name) {
-    mismatches.push(`身宫: API=${api.shengong?.name}(${api.shengong?.sound}) SPA=${spa.shengong?.name}(${spa.shengong?.sound})`);
-  }
-  
-  // 比对胎元
-  if (api.taiyuan?.name !== spa.taiyuan?.name) {
-    mismatches.push(`胎元: API=${api.taiyuan?.name}(${api.taiyuan?.sound}) SPA=${spa.taiyuan?.name}(${spa.taiyuan?.sound})`);
-  }
-  
-  // 比对胎息
-  if (api.taixi?.name !== spa.taixi?.name) {
-    mismatches.push(`胎息: API=${api.taixi?.name}(${api.taixi?.sound}) SPA=${spa.taixi?.name}(${spa.taixi?.sound})`);
-  }
-  
-  // 比对起运信息（容差比较，允许10分钟差异）
-  const QIYUN_TOLERANCE_MINUTES = 10;
-  if (api.qiyun !== spa.qiyun) {
-    // 解析起运信息中的时间
-    const parseQiyunTime = (str) => {
-      if (!str) return null;
-      // 匹配格式: "8年1个月17天22时4分 (2005年5月29日 07:48:24后起运)" 或类似格式
-      const timeMatch = str.match(/(\d{4})年(\d+)月(\d+)日\s+(\d+):(\d+):?(\d*)/);
-      if (timeMatch) {
-        return new Date(
-          parseInt(timeMatch[1]),
-          parseInt(timeMatch[2]) - 1,
-          parseInt(timeMatch[3]),
-          parseInt(timeMatch[4]),
-          parseInt(timeMatch[5]),
-          parseInt(timeMatch[6] || 0)
-        );
-      }
-      return null;
     };
-    
-    const apiTime = parseQiyunTime(api.qiyun);
-    const spaTime = parseQiyunTime(spa.qiyun);
-    
-    if (apiTime && spaTime) {
-      const diffMs = Math.abs(apiTime - spaTime);
-      const diffMinutes = Math.round(diffMs / 60000);
-      
-      if (diffMinutes <= QIYUN_TOLERANCE_MINUTES) {
-        // 在容差范围内，记录为可接受的差异
-        toleranceNotes.push(`起运时间差异: ${diffMinutes}分钟 (API: ${api.qiyun}, SPA: ${spa.qiyun}) - 已接受（tyme库差异导致）`);
-      } else {
-        mismatches.push(`起运信息: API=${api.qiyun} SPA=${spa.qiyun}`);
-      }
+
+    if (isPassed) {
+      console.log(`[${tc.caseId}] ✅ 测试通过: ${tc.year}年${tc.month}月${tc.day}日 ${tc.hour}:00 ${tc.gender} (${tc.caseType})`);
     } else {
-      mismatches.push(`起运信息: API=${api.qiyun} SPA=${spa.qiyun}`);
+      console.log(`[${tc.caseId}] ❌ 测试失败: ${tc.year}年${tc.month}月${tc.day}日 ${tc.hour}:00 ${tc.gender} (${tc.caseType})`);
+      console.log(`  差异数: ${comparison.mismatches.length}`);
+      comparison.mismatches.forEach(mismatch => {
+        console.log(`    - ${mismatch}`);
+      });
+      console.log(`  等待2秒后继续下一个测试...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
-  }
-  
-  const apiDayun = api.dayun || [];
-  const spaDayun = spa.dayun || [];
-  if (apiDayun.length !== spaDayun.length) {
-    mismatches.push(`大运数量: API=${apiDayun.length} SPA=${spaDayun.length}`);
-  }
-  
-  for (let i = 0; i < Math.min(apiDayun.length, spaDayun.length); i++) {
-    const apiDy = apiDayun[i];
-    const spaDy = spaDayun[i];
-    
-    // 检查是否是童限（第一个大运）
-    const label = i === 0 ? '童限' : `大运${i+1}`;
-    
-    // 比对干支
-    if (apiDy.ganzhi !== spaDy.ganzhi) {
-      mismatches.push(`${label}干支: API=${apiDy.ganzhi} SPA=${spaDy.ganzhi}`);
+
+    if (reportDir) {
+      const fileName = generateSingleFileName(tc, result.status);
+      const filePath = path.join(reportDir, fileName);
+      const singleJson = generateSingleTestJSON(result, tc.caseId);
+      fs.writeFileSync(filePath, JSON.stringify(singleJson, null, 2), 'utf8');
+      result._savedFile = fileName;
     }
-    
-    // 比对起始年
-    if ((apiDy.startYear || apiDy.qishinian) !== (spaDy.startYear || spaDy.qishinian)) {
-      mismatches.push(`${label}起始年: API=${apiDy.startYear || apiDy.qishinian} SPA=${spaDy.startYear || spaDy.qishinian}`);
-    }
-    
-    // 比对结束年
-    if ((apiDy.endYear || apiDy.zhishinian) !== (spaDy.endYear || spaDy.zhishinian)) {
-      mismatches.push(`${label}结束年: API=${apiDy.endYear || apiDy.zhishinian} SPA=${spaDy.endYear || spaDy.zhishinian}`);
-    }
-    
-    // 比对起始年龄
-    const startAgeDiff = Math.abs((apiDy.startAge || 0) - (spaDy.startAge || 0));
-    if (startAgeDiff > 1) {
-      mismatches.push(`${label}起始年龄: API=${apiDy.startAge} SPA=${spaDy.startAge}`);
-    }
-    
-    // 比对结束年龄
-    const endAgeDiff = Math.abs((apiDy.endAge || 0) - (spaDy.endAge || 0));
-    if (endAgeDiff > 1) {
-      mismatches.push(`${label}结束年龄: API=${apiDy.endAge} SPA=${spaDy.endAge}`);
-    }
-    
-    // 比对十神
-    if (apiDy.shishen !== spaDy.shishen) {
-      mismatches.push(`${label}十神: API=${apiDy.shishen} SPA=${spaDy.shishen}`);
-    }
-  }
-  return { mismatches, toleranceNotes };
-}
 
-function compareGeju(api, spa) {
-  const mismatches = [];
-  if (!api && !spa) return mismatches;
-  if (!api && spa) {
-    mismatches.push(`格局数据缺失: api缺失`);
-    return mismatches;
+    return result;
+  } catch (error) {
+    console.error(`❌ 测试出错: ${error.message}`);
+    throw error;
   }
-  if (!spa && api) {
-    mismatches.push(`格局数据缺失: spa缺失`);
-    return mismatches;
-  }
-
-  // 比对格局名称
-  if (api.geju !== spa.geju) {
-    mismatches.push(`格局名称: API=${api.geju} SPA=${spa.geju}`);
-  }
-
-  // 比对说明
-  if (api.shuoming !== spa.shuoming) {
-    mismatches.push(`格局说明: API=${api.shuoming} SPA=${spa.shuoming}`);
-  }
-
-  // 比对调候
-  if (api.tiaohou !== spa.tiaohou) {
-    mismatches.push(`调候: API=${api.tiaohou} SPA=${spa.tiaohou}`);
-  }
-
-  // 比对喜用神
-  if (JSON.stringify(api.xiyong) !== JSON.stringify(spa.xiyong)) {
-    mismatches.push(`喜用神: API=${api.xiyong?.join(',')} SPA=${spa.xiyong?.join(',')}`);
-  }
-
-  // 比对忌讳神
-  if (JSON.stringify(api.jihui) !== JSON.stringify(spa.jihui)) {
-    mismatches.push(`忌讳神: API=${api.jihui?.join(',')} SPA=${spa.jihui?.join(',')}`);
-  }
-
-  // 比对建议
-  if (api.jianyi !== spa.jianyi) {
-    mismatches.push(`格局建议: API=${api.jianyi} SPA=${spa.jianyi}`);
-  }
-
-  return mismatches;
 }
 
 /**
- * 对比格局分析
- * @param {Object} api - API返回的格局数据
- * @param {Object} spa - SPA返回的格局数据
- * @returns {Array} 差异数组
+ * 生成测试报告
+ * @param {Array} results - 测试结果数组
+ * @param {number} passCount - 通过数
+ * @param {number} failCount - 失败数
+ * @param {number} totalCount - 总数
+ * @param {string} testScope - 测试范围
+ * @param {string} reportDirName - 报告目录名称
+ * @returns {Object} 报告文件路径对象
  */
-function compareGeju(api, spa) {
-  const mismatches = [];
+function generateTestReport(results, passCount, failCount, totalCount, testScope, reportDirName) {
+  const reportDir = path.join(RESULTS_DIR, reportDirName);
   
-  // 从API的sizhu构建shensha对象用于比较
-  let apiShensha = api;
-  if (api?.sizhu && !api?.nian && !api?.yue && !api?.ri && !api?.shi) {
-    apiShensha = {
-      nian: api.sizhu.nian?.shensha || [],
-      yue: api.sizhu.yue?.shensha || [],
-      ri: api.sizhu.ri?.shensha || [],
-      shi: api.sizhu.shi?.shensha || []
-    };
-  }
-  
-  if (!apiShensha && !spa) return mismatches;
-  if (!apiShensha && spa) {
-    mismatches.push(`神煞数据缺失: api缺失`);
-    return mismatches;
-  }
-  if (!spa && apiShensha) {
-    mismatches.push(`神煞数据缺失: spa缺失`);
-    return mismatches;
-  }
-
-  const pillars = ['nian', 'yue', 'ri', 'shi'];
-  for (const p of pillars) {
-    const apiArr = apiShensha[p] || [];
-    const spaArr = spa[p] || [];
-
-    const apiStr = JSON.stringify(apiArr.sort());
-    const spaStr = JSON.stringify(spaArr.sort());
-
-    if (apiStr !== spaStr) {
-      const apiMissing = spaArr.filter(x => !apiArr.includes(x));
-      const spaMissing = apiArr.filter(x => !spaArr.includes(x));
-      if (apiMissing.length > 0 || spaMissing.length > 0) {
-        mismatches.push(`${p}神煞差异: API有${apiArr} SPA有${spaArr}`);
-      }
-    }
-  }
-
-  return mismatches;
-}
-
-/**
- * 对比地支关系
- * @param {Object} api - API返回的地支关系数据
- * @param {Object} spa - SPA返回的地支关系数据
- * @returns {Array} 差异数组
- */
-function compareRelationships(api, spa) {
-  const mismatches = [];
-  if (!api && !spa) return mismatches;
-  if (!api && spa) {
-    mismatches.push(`地支关系数据缺失: api缺失`);
-    return mismatches;
-  }
-  if (!spa && api) {
-    mismatches.push(`地支关系数据缺失: spa缺失`);
-    return mismatches;
-  }
-
-  const apiStems = api.stems || [];
-  const apiBranches = api.branches || [];
-  const spaStems = spa.stems || [];
-  const spaBranches = spa.branches || [];
-
-  if (apiStems.length !== spaStems.length) {
-    mismatches.push(`天干关系数量: API=${apiStems.length} SPA=${spaStems.length}`);
-  }
-  if (apiBranches.length !== spaBranches.length) {
-    mismatches.push(`地支关系数量: API=${apiBranches.length} SPA=${spaBranches.length}`);
-  }
-
-  for (let i = 0; i < Math.min(apiStems.length, spaStems.length); i++) {
-    const apiRel = apiStems[i];
-    const spaRel = spaStems[i];
-    const apiType = apiRel.type || '';
-    const spaType = spaRel.type || '';
-    if (apiType !== spaType || apiRel.desc !== spaRel.desc) {
-      mismatches.push(`天干关系${i+1}: API=${apiType}${apiRel.desc} SPA=${spaType}${spaRel.desc}`);
-    }
-  }
-
-  for (let i = 0; i < Math.min(apiBranches.length, spaBranches.length); i++) {
-    const apiRel = apiBranches[i];
-    const spaRel = spaBranches[i];
-    const apiType = apiRel.type || '';
-    const spaType = spaRel.type || '';
-    if (apiType !== spaType || apiRel.desc !== spaRel.desc) {
-      mismatches.push(`地支关系${i+1}: API=${apiType}${apiRel.desc} SPA=${spaType}${spaRel.desc}`);
-    }
-  }
-
-  return mismatches;
-}
-
-/**
- * 对比完整的计算结果
- * @param {Object} api - API返回的完整数据
- * @param {Object} spa - SPA返回的完整数据
- * @returns {Object} 包含是否匹配和差异数组的对象
- */
-function compareFullResults(api, spa) {
-  const mismatches = [];
-  const details = {
-    pillars: {},
-    nayin: true,
-    wuxing: true,
-    pattern: true,
-    dayun: true,
-    shensha: true,
-    baziArr: true
-  };
-  
-  if (!api || !spa) {
-    console.error('API or SPA data is null:', { api: !!api, spa: !!spa });
-    mismatches.push('API或SPA数据为空');
-    return { match: false, mismatches, details };
-  }
-  
-  // 比对 baziArr
-  const apiBaziObj = api.baseInfo?.baziArr || {};
-  const apiBaziArr = [
-    apiBaziObj.niangan || '',
-    apiBaziObj.nianzhi || '',
-    apiBaziObj.yuegan || '',
-    apiBaziObj.yuezhi || '',
-    apiBaziObj.rigan || '',
-    apiBaziObj.rizhi || '',
-    apiBaziObj.shigan || '',
-    apiBaziObj.shizhi || ''
-  ];
-  const spaBaziArr = [
-    spa.year?.heavenStem || '',
-    spa.year?.earthBranch || '',
-    spa.month?.heavenStem || '',
-    spa.month?.earthBranch || '',
-    spa.day?.heavenStem || '',
-    spa.day?.earthBranch || '',
-    spa.hour?.heavenStem || '',
-    spa.hour?.earthBranch || ''
-  ];
-  
-  if (JSON.stringify(apiBaziArr) !== JSON.stringify(spaBaziArr)) {
-    mismatches.push(`baziArr 不匹配: API=${apiBaziArr.join('')} SPA=${spaBaziArr.join('')}`);
-    details.baziArr = false;
-  }
-  
-  const pillars = ['nian', 'yue', 'ri', 'shi'];
-  const pillarNames = { nian: '年柱', yue: '月柱', ri: '日柱', shi: '时柱' };
-  
-  for (const p of pillars) {
-    const apiPillar = api.sizhu?.[p];
-    const spaPillar = spa[p === 'nian' ? 'year' : p === 'yue' ? 'month' : p === 'ri' ? 'day' : 'hour'];
-    if (!apiPillar || !spaPillar) {
-      console.error(`Pillar ${p} data missing:`, { apiPillar: !!apiPillar, spaPillar: !!spaPillar });
-    }
-    const pMismatches = comparePillars(apiPillar, spaPillar, pillarNames[p]);
-    if (pMismatches.length > 0) {
-      mismatches.push(...pMismatches.map(m => `${pillarNames[p]}: ${m}`));
-      details.pillars[p] = false;
-    } else {
-      details.pillars[p] = true;
-    }
-  }
-  
-  const nayinMismatches = compareNayin(api, spa.nayin);
-  if (nayinMismatches.length > 0) {
-    mismatches.push(...nayinMismatches);
-    details.nayin = false;
-  }
-  
-  const wuxingMismatches = compareWuxingEnergy(api.nengliang?.wuxing, spa.wuxingEnergy);
-  if (wuxingMismatches.length > 0) {
-    mismatches.push(...wuxingMismatches.map(m => `五行能量: ${m}`));
-    details.wuxing = false;
-  }
-  
-  const dayunResult = compareDayun(api.dayun, spa.dayun);
-  if (dayunResult.mismatches.length > 0) {
-    mismatches.push(...dayunResult.mismatches.map(m => `大运: ${m}`));
-    details.dayun = false;
-  }
-  
-  // 收集可接受的差异备注
-  if (dayunResult.toleranceNotes && dayunResult.toleranceNotes.length > 0) {
-    details.dayunToleranceNotes = dayunResult.toleranceNotes;
-  }
-  
-  const relMismatches = compareRelationships(api.chonghe, spa.relationships);
-  if (relMismatches.length > 0) {
-    mismatches.push(...relMismatches.map(m => `地支关系: ${m}`));
-    details.relationships = false;
-  }
-  
-  const gejuMismatches = compareGeju(api.geju, spa.geju);
-  if (gejuMismatches.length > 0) {
-    mismatches.push(...gejuMismatches.map(m => `格局分析: ${m}`));
-    details.pattern = false;
-  }
-  
-  return { match: mismatches.length === 0, mismatches, details };
-}
-
-async function runTest(tc, browser) {
-  const params = {
-    year: tc.year,
-    month: tc.month,
-    day: tc.day,
-    hour: tc.hour,
-    minute: 0,
-    longitude: BEIJING_DONGCHENG_LONGITUDE,
-    gender: tc.gender === '男' ? 1 : 2,
-    useTrueSolar: true
-  };
-
-  const apiResult = await callAPI(params);
-
-  if (!apiResult.success || !apiResult.data) {
-    return { match: false, error: apiResult.error?.message || 'API返回错误', tc };
-  }
-
-  const spaResult = await testSPA(tc, browser);
-
-  if (!spaResult) {
-    return { match: false, error: 'SPA数据提取失败', tc };
-  }
-
-  const comparison = compareFullResults(apiResult.data, spaResult);
-
-  return { match: comparison.match, mismatches: comparison.mismatches, details: comparison.details, tc, apiResult: apiResult.data, spaResult };
-}
-
-function generateTestReport(results, passed, failed, total) {
-  const now = new Date();
-  const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const reportDir = RESULTS_DIR;
-
   if (!fs.existsSync(reportDir)) {
     fs.mkdirSync(reportDir, { recursive: true });
   }
 
-  const reportPath = path.join(reportDir, `test_report_${timestamp}.html`);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+  
+  const localTimestamp = `${year}-${month}-${day}T${hours}-${minutes}-${seconds}-${milliseconds}Z`;
+  const reportId = `test_report_${localTimestamp}`;
+  
+  const htmlReport = generateHTMLReport(results, passCount, failCount, totalCount, reportId);
 
-  const passRate = ((passed / total) * 100).toFixed(1);
-  const passColor = passRate >= 80 ? '#28a745' : passRate >= 50 ? '#ffc107' : '#dc3545';
+  const htmlFilePath = path.join(reportDir, 'test_report.html');
+  fs.writeFileSync(htmlFilePath, htmlReport, 'utf8');
 
-  let html = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>八字 API vs SPA 对比测试报告 - ${now.toLocaleString('zh-CN')}</title>
-  <style>
-    body { font-family: 'Microsoft YaHei', Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-    .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-    h1 { color: #333; border-bottom: 3px solid #007bff; padding-bottom: 15px; }
-    .summary { display: flex; gap: 20px; margin: 20px 0; }
-    .stat-box { flex: 1; padding: 20px; border-radius: 8px; text-align: center; color: white; }
-    .stat-total { background: #6c757d; }
-    .stat-pass { background: #28a745; }
-    .stat-fail { background: #dc3545; }
-    .stat-rate { background: ${passColor}; }
-    .stat-number { font-size: 36px; font-weight: bold; }
-    .stat-label { font-size: 14px; margin-top: 5px; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-    th { background: #007bff; color: white; }
-    tr:hover { background: #f8f9fa; }
-    .status-pass { color: #28a745; font-weight: bold; }
-    .status-fail { color: #dc3545; font-weight: bold; }
-    .mismatch-list { background: #fff3cd; padding: 15px; border-radius: 5px; margin: 10px 0; font-size: 13px; }
-    .mismatch-item { padding: 5px 0; border-bottom: 1px solid #e0c975; }
-    .footer { margin-top: 30px; color: #6c757d; text-align: center; font-size: 12px; }
-    .detail-section { margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 5px; }
-    .detail-title { font-weight: bold; margin-bottom: 10px; color: #495057; }
-    .detail-item { display: flex; justify-content: space-between; padding: 5px 0; }
-    .detail-ok { color: #28a745; }
-    .detail-error { color: #dc3545; }
-    .data-toggle { cursor: pointer; color: #007bff; text-decoration: underline; font-size: 13px; margin-top: 10px; }
-    .data-section { display: none; margin-top: 10px; padding: 15px; background: #fff; border: 1px solid #ddd; border-radius: 5px; }
-    .data-section.show { display: block; }
-    .data-title { font-weight: bold; margin-bottom: 10px; color: #007bff; }
-    .data-content { background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: 'Courier New', monospace; font-size: 12px; white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>📊 八字 API vs SPA 完整对比测试报告</h1>
-    <p><strong>生成时间:</strong> ${now.toLocaleString('zh-CN')}</p>
-    
-    <div class="summary">
-      <div class="stat-box stat-total">
-        <div class="stat-number">${total}</div>
-        <div class="stat-label">总测试数</div>
-      </div>
-      <div class="stat-box stat-pass">
-        <div class="stat-number">${passed}</div>
-        <div class="stat-label">通过 ✅</div>
-      </div>
-      <div class="stat-box stat-fail">
-        <div class="stat-number">${failed}</div>
-        <div class="stat-label">失败 ❌</div>
-      </div>
-      <div class="stat-box stat-rate">
-        <div class="stat-number">${passRate}%</div>
-        <div class="stat-label">通过率</div>
-      </div>
-    </div>
+  const summaryJson = generateSummaryJSON(results, passCount, failCount, totalCount, reportId, 'compare', testScope);
+  const summaryFilePath = path.join(reportDir, 'summary.json');
+  fs.writeFileSync(summaryFilePath, JSON.stringify(summaryJson, null, 2), 'utf8');
 
-    <h2>📋 测试详情</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>序号</th>
-          <th>测试用例</th>
-          <th>类型</th>
-          <th>状态</th>
-          <th>差异数</th>
-          <th>详情</th>
-        </tr>
-      </thead>
-      <tbody>`;
+  console.log(`\n============================================================`);
+  console.log(`生成测试报告...`);
+  console.log(`报告目录: ${reportDir}`);
+  console.log(`HTML报告: test_report.html`);
+  console.log(`汇总JSON: summary.json`);
+  console.log(`测试用例JSON: ${results.length} 个文件`);
+  console.log(`============================================================`);
 
-  results.forEach((r, idx) => {
-    const tc = r.tc;
-    const status = r.match ? 'pass' : 'fail';
-    const mismatches = r.mismatches || [];
-    const details = r.details || {};
-    const apiData = r.apiResult || {};
-    const spaData = r.spaResult || {};
-    const typeLabel = tc.isFailed ? '失败' : tc.isRandom ? '随机' : tc.isSingle ? '单个' : '预设';
-
-    let detailHtml = '';
-    if (!r.match && !r.error) {
-      detailHtml = `<div class="mismatch-list">
-        ${mismatches.slice(0, 10).map(m => `<div class="mismatch-item">${m}</div>`).join('')}
-        ${mismatches.length > 10 ? `<div class="mismatch-item">... 还有 ${mismatches.length - 10} 项差异</div>` : ''}
-      </div>`;
-    } else if (r.error) {
-      detailHtml = `<div class="mismatch-list" style="background: #f8d7da;">错误: ${r.error}</div>`;
-    } else {
-      detailHtml = `<div class="detail-section">
-        <div class="detail-title">比对项目</div>
-        ${Object.entries(details).map(([key, value]) => {
-          if (key === 'pillars') {
-            return Object.entries(value).map(([p, v]) => 
-              `<div class="detail-item"><span>${p === 'nian' ? '年柱' : p === 'yue' ? '月柱' : p === 'ri' ? '日柱' : '时柱'}</span><span class="${v ? 'detail-ok' : 'detail-error'}">${v ? '✅' : '❌'}</span></div>`
-            ).join('');
-          }
-          if (key === 'dayunToleranceNotes') {
-            return '';
-          }
-          return `<div class="detail-item"><span>${key}</span><span class="${value ? 'detail-ok' : 'detail-error'}">${value ? '✅' : '❌'}</span></div>`;
-        }).join('')}
-      </div>`;
-    }
-
-    // 添加可接受的差异备注
-    const toleranceNotes = details.dayunToleranceNotes || [];
-    if (toleranceNotes.length > 0) {
-      detailHtml += `<div class="detail-section" style="background: #d4edda; border: 1px solid #c3e6cb;">
-        <div class="detail-title" style="color: #155724;">ℹ️ 可接受的差异说明 (tyme库实现差异)</div>
-        ${toleranceNotes.map(note => `<div class="detail-item" style="color: #155724;">${note}</div>`).join('')}
-      </div>`;
-    }
-
-    const sectionId = `data-${idx}`;
-    detailHtml += `
-      <div class="data-toggle" onclick="toggleData('${sectionId}')">📄 查看原始数据 (API + SPA)</div>
-      <div id="${sectionId}" class="data-section">
-        <div class="data-title">🔹 API 返回数据</div>
-        <div class="data-content">${JSON.stringify(apiData, null, 2)}</div>
-        <div class="data-title" style="margin-top: 15px;">🔹 SPA 页面数据</div>
-        <div class="data-content">${JSON.stringify(spaData, null, 2)}</div>
-      </div>`;
-
-    html += `
-      <tr>
-        <td>${idx + 1}</td>
-        <td>${tc.year}年${tc.month}月${tc.day}日 ${tc.hour}:00 ${tc.gender}</td>
-        <td>${typeLabel}</td>
-        <td class="status-${status}">${r.match ? '✅ 通过' : '❌ 失败'}</td>
-        <td>${r.error ? '-' : mismatches.length}</td>
-        <td>${detailHtml}</td>
-      </tr>`;
-  });
-
-  html += `
-      </tbody>
-    </table>
-
-    <div class="footer">
-      <p>测试用例总数: ${total} | 通过: ${passed} | 失败: ${failed} | 通过率: ${passRate}%</p>
-      <p>报告生成时间: ${now.toISOString()}</p>
-    </div>
-  </div>
-  <script>
-    function toggleData(id) {
-      const section = document.getElementById(id);
-      section.classList.toggle('show');
-    }
-  </script>
-</body>
-</html>`;
-
-  fs.writeFileSync(reportPath, html, 'utf8');
-  return reportPath;
+  return {
+    reportDir,
+    reportDirName,
+    htmlFilePath,
+    htmlFileName: 'test_report.html',
+    summaryFilePath,
+    summaryFileName: 'summary.json',
+    totalCases: totalCount,
+    passedCases: passCount,
+    failedCases: failCount
+  };
 }
 
-async function main() {
+/**
+ * 主函数
+ * @param {Object} options - 测试选项
+ */
+async function main(options = {}) {
+  ensureResultsDir();
+
+  // 处理命令行参数
   const args = process.argv.slice(2);
   let testCasesArg = null;
 
@@ -1079,203 +446,342 @@ async function main() {
     }
   }
 
-  console.log('\n' + '='.repeat(60));
-  console.log('API vs SPA 完整对比测试');
-  console.log('='.repeat(60));
-
-  let actualTestCases;
+  // 如果有通过命令行传递的测试用例，使用它们
   if (testCasesArg && Array.isArray(testCasesArg) && testCasesArg.length > 0) {
-    actualTestCases = testCasesArg;
-    const presetCount = actualTestCases.filter(tc => tc.isPreset).length;
-    const failedCount = actualTestCases.filter(tc => tc.isFailed).length;
-    const randomCount = actualTestCases.filter(tc => tc.isRandom).length;
-    const singleCount = actualTestCases.filter(tc => tc.isSingle).length;
+    const testCases = testCasesArg.map((tc, index) => ({
+      ...tc,
+      caseId: index + 1,
+      caseType: tc.isPreset ? '预设' : (tc.isFailed ? '失败' : (tc.isRandom ? '随机' : '单个'))
+    }));
+    
+    const presetCount = testCases.filter(tc => tc.caseType === '预设').length;
+    const failedCount = testCases.filter(tc => tc.caseType === '失败').length;
+    const randomCount = testCases.filter(tc => tc.caseType === '随机').length;
+    const singleCount = testCases.filter(tc => tc.caseType === '单个').length;
+    
     const parts = [];
     if (presetCount > 0) parts.push(`预设 ${presetCount}`);
     if (failedCount > 0) parts.push(`失败 ${failedCount}`);
     if (randomCount > 0) parts.push(`随机 ${randomCount}`);
     if (singleCount > 0) parts.push(`单个 ${singleCount}`);
-    console.log(`测试数量: ${actualTestCases.length} (${parts.join(' + ')})`);
-  } else {
-    actualTestCases = TEST_CASES;
-    console.log(`测试数量: ${TEST_CASES.length} (全部预设)`);
+    
+    const testScope = parts.join(' + ');
+    
+    return await runTests(testCases, testScope);
   }
-  console.log('');
 
-  let browser = null;
-  let passed = 0;
-  let failed = 0;
+  const {
+    preset = 'all',
+    random = 'skip',
+    single = [],
+    failedOption = 'skip',
+    all = false
+  } = options;
+
+  let testCases = [];
+  let testScope = '';
+
+  // 处理all参数
+  if (all) {
+    preset = 'all';
+    random = 10;
+    failedOption = 'test';
+    testScope = '全部: 预设全部 + 失败用例 + 随机10个';
+  }
+
+  // 预设用例
+  if (preset !== 'skip') {
+    if (preset === 'all') {
+      testCases = testCases.concat(TEST_CASES.map((tc, index) => ({ ...tc, caseId: index + 1, caseType: '预设' })));
+      testScope += (testScope ? ' + ' : '') + `预设: 全部 ${TEST_CASES.length} 个`;
+    } else if (typeof preset === 'number') {
+      const selected = TEST_CASES.slice(0, preset);
+      testCases = testCases.concat(selected.map((tc, index) => ({ ...tc, caseId: index + 1, caseType: '预设' })));
+      testScope += (testScope ? ' + ' : '') + `预设: 前 ${preset} 个`;
+    } else if (typeof preset === 'string' && preset.includes('-')) {
+      const [start, end] = preset.split('-').map(Number);
+      const selected = TEST_CASES.slice(start - 1, end);
+      testCases = testCases.concat(selected.map((tc, index) => ({ ...tc, caseId: start + index, caseType: '预设' })));
+      testScope += (testScope ? ' + ' : '') + `预设: 第${start}-${end}个`;
+    }
+  }
+
+  // 失败用例
+  if (failedOption === 'test') {
+    const failedCases = require('./report_utils').FAILED_CASES_FILE;
+    if (fs.existsSync(failedCases)) {
+      const data = fs.readFileSync(failedCases, 'utf8');
+      const cases = JSON.parse(data).filter(tc => tc.status === '失败');
+      testCases = testCases.concat(cases.map((tc, index) => ({ ...tc, caseId: testCases.length + index + 1, caseType: '失败' })));
+      testScope += (testScope ? ' + ' : '') + `失败: 失败用例 ${cases.length} 个`;
+    }
+  }
+
+  // 随机用例
+  if (typeof random === 'number' && random > 0) {
+    const randomCases = generateRandomCases(random, testCases);
+    testCases = testCases.concat(randomCases.map((tc, index) => ({ ...tc, caseId: testCases.length + index + 1, caseType: '随机' })));
+    testScope += (testScope ? ' + ' : '') + `随机: 随机生成 ${random} 个`;
+  }
+
+  // 单个指定用例
+  if (single.length > 0) {
+    const singleCases = single.map(s => parseSingleCase(s));
+    testCases = testCases.concat(singleCases.map((tc, index) => ({ ...tc, caseId: testCases.length + index + 1, caseType: '单个' })));
+    testScope += (testScope ? ' + ' : '') + `单个: 单个指定 ${single.length} 个`;
+  }
+
+  if (testCases.length === 0) {
+    console.log('⚠️  没有测试用例，请指定测试参数');
+    return;
+  }
+
+  return await runTests(testCases, testScope);
+}
+
+/**
+ * 运行测试
+ * @param {Array} testCases - 测试用例数组
+ * @param {string} testScope - 测试范围描述
+ * @returns {Promise<Object>} 报告文件路径对象
+ */
+async function runTests(testCases, testScope) {
+  console.log(`============================================================`);
+  console.log(`正在运行: 完整对比测试`);
+  console.log(`对比 API 和 SPA 的计算结果，包括四柱、纳音、五行能量、大运、神煞、地支关系`);
+  console.log(`测试范围: ${testScope}`);
+  console.log(`============================================================`);
+
+  console.log(`\n============================================================`);
+  console.log(`API vs SPA 完整对比测试`);
+  console.log(`============================================================`);
+  console.log(`测试数量: ${testCases.length}`);
+
+  const reportDirName = generateReportDirName(testCases.length);
+  const reportDir = path.join(RESULTS_DIR, reportDirName);
+  if (!fs.existsSync(reportDir)) {
+    fs.mkdirSync(reportDir, { recursive: true });
+  }
+  console.log(`\n📁 报告目录: ${reportDir}`);
+
+  console.log(`\n正在启动Chrome浏览器...`);
+  
+  const browser = await puppeteer.launch({
+    executablePath: CHROME_PATH,
+    headless: false,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--disable-extensions',
+      '--disable-background-networking',
+      '--disable-sync',
+      '--disable-translate',
+      '--metrics-recording-only',
+      '--mute-audio',
+      '--no-first-run',
+      '--safebrowsing-disable-auto-update',
+      '--disable-crashpad',
+      '--disable-crash-reporter',
+      '--disable-rlz',
+      '--rlz-offline=1',
+      '--disable-logging',
+      '--log-level=3',
+      '--user-data-dir=/tmp/chrome-test-profile',
+      '--disk-cache-dir=/tmp/chrome-test-cache',
+      '--crash-dumps-dir=/tmp/chrome-crashes',
+      '--breakpad-dump-dir=/tmp/chrome-crashes',
+      '--no-crash-upload',
+      '--disable-features=NetworkService,NetworkServiceInProcess',
+      '--disable-print-preview',
+      '--disable-merge-session-crld',
+      '--disable-background-mode',
+      '--disable-floating-virtual-keyboard',
+      '--disable-hangout-services-extension',
+      '--disable-password-manager-reauthentication',
+      '--disable-save-password-bubble',
+      '--disable-speech-api',
+      '--disable-permission-auto-deny-for-testing',
+      '--disable-site-isolation-for-policy',
+      '--disable-default-apps',
+      '--disable-popup-blocking',
+      '--disable-prompt-on-repost',
+      '--disable-component-update-on-restart',
+      '--disable-breakpad',
+      '--disable-client-side-phishing-detection',
+      '--disable-disk-cache',
+      '--disable-java',
+      '--disable-plugins-discovery',
+      '--disable-preconnect',
+      '--enable-automation',
+      '--no-experiments',
+      '--ignore-gpu-blocklist',
+      '--test-third-party-cookie-phaseout',
+      '--disable-accelerated-2d-canvas',
+      '--disable-canvas-aa',
+      '--disable-2d-canvas-clip-aa',
+      '--disable-web-resources',
+      '--disable-cloud-import',
+      '--disable-oopr-debug-crash',
+      '--force-courtesies',
+      '--homepage=about:blank',
+      '--new-tab-page-url=about:blank',
+      '--no-service-autorun'
+    ],
+    ignoreDefaultArgs: ['--enable-automation'],
+    handleSIGINT: true
+  });
+
+  console.log(`Chrome浏览器启动成功`);
+
   const results = [];
-  const fixedFailedCases = [];
+  const fixedCases = [];
 
   try {
-    console.log('\n正在启动Chrome浏览器...');
-    browser = await puppeteer.launch({
-      executablePath: CHROME_PATH,
-      headless: false,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-software-rasterizer',
-        '--disable-extensions',
-        '--disable-background-networking',
-        '--disable-sync',
-        '--disable-translate',
-        '--metrics-recording-only',
-        '--mute-audio',
-        '--no-first-run',
-        '--safebrowsing-disable-auto-update',
-        '--disable-crashpad',
-        '--disable-crash-reporter',
-        '--disable-rlz',
-        '--rlz-offline=1',
-        '--disable-logging',
-        '--log-level=3',
-        '--user-data-dir=/tmp/chrome-test-profile',
-        '--disk-cache-dir=/tmp/chrome-test-cache',
-        '--crash-dumps-dir=/tmp/chrome-crashes',
-        '--breakpad-dump-dir=/tmp/chrome-crashes',
-        '--no-crash-upload',
-        '--disable-features=NetworkService,NetworkServiceInProcess',
-        '--disable-print-preview',
-        '--disable-merge-session-crld',
-        '--disable-background-mode',
-        '--disable-floating-virtual-keyboard',
-        '--disable-hangout-services-extension',
-        '--disable-password-manager-reauthentication',
-        '--disable-save-password-bubble',
-        '--disable-speech-api',
-        '--disable-permission-auto-deny-for-testing',
-        '--disable-site-isolation-for-policy',
-        '--disable-default-apps',
-        '--disable-popup-blocking',
-        '--disable-prompt-on-repost',
-        '--disable-component-update-on-restart',
-        '--disable-breakpad',
-        '--disable-client-side-phishing-detection',
-        '--disable-disk-cache',
-        '--disable-java',
-        '--disable-plugins-discovery',
-        '--disable-preconnect',
-        '--enable-automation',
-        '--no-experiments',
-        '--ignore-gpu-blocklist',
-        '--test-third-party-cookie-phaseout',
-        '--disable-accelerated-2d-canvas',
-        '--disable-canvas-aa',
-        '--disable-2d-canvas-clip-aa',
-        '--disable-web-resources',
-        '--disable-cloud-import',
-        '--disable-oopr-debug-crash',
-        '--force-courtesies',
-        '--homepage=about:blank',
-        '--new-tab-page-url=about:blank',
-        '--no-service-autorun'
-      ],
-      ignoreDefaultArgs: ['--enable-automation'],
-      handleSIGINT: true
-    });
-    console.log('Chrome浏览器启动成功');
+    for (const tc of testCases) {
+      const result = await runTest(tc, browser, reportDir);
+      results.push(result);
 
-    for (let i = 0; i < actualTestCases.length; i++) {
-      const tc = actualTestCases[i];
-      const typeLabel = tc.isFailed ? '(失败用例)' : tc.isRandom ? '(随机生成)' : tc.isSingle ? '(单个指定)' : '(预设用例)';
-      try {
-        const result = await runTest(tc, browser);
-        results.push(result);
-
-        if (result.match) {
-          console.log(`\n[${i + 1}/${actualTestCases.length}] ✅ 测试通过: ${tc.year}年${tc.month}月${tc.day}日 ${tc.hour}:00 ${tc.gender} ${typeLabel}`);
-          passed++;
-          
-          if (tc.isFailed) {
-            fixedFailedCases.push(tc);
-          }
-        } else {
-          console.log(`\n[${i + 1}/${actualTestCases.length}] ❌ 测试失败: ${tc.year}年${tc.month}月${tc.day}日 ${tc.hour}:00 ${tc.gender} ${typeLabel}`);
-          if (result.error) {
-            console.log(`  错误: ${result.error}`);
-          } else {
-            console.log(`  差异数: ${result.mismatches?.length || 0}`);
-            result.mismatches?.slice(0, 5).forEach(m => console.log(`    - ${m}`));
-          }
-          failed++;
-        }
-      } catch (error) {
-        console.log(`\n[${i + 1}/${actualTestCases.length}] ❌ 测试异常: ${tc.year}年${tc.month}月${tc.day}日 ${tc.hour}:00 ${tc.gender} ${typeLabel}`);
-        console.log(`  异常: ${error.message}`);
-        console.log('');
-        console.log('测试遇到异常，停止后续测试');
-        console.log('');
-        console.log('请检查：');
-        console.log('  1. API 和 SPA 服务是否正常运行');
-        console.log('  2. 浏览器是否正常启动');
-        console.log('  3. 网络连接是否正常');
-        console.log('');
-        failed++;
-        throw error;
-      }
-
-      if (i < actualTestCases.length - 1) {
-        console.log('\n  等待2秒后继续下一个测试...');
-        await new Promise(r => setTimeout(r, 2000));
+      if (result.status === 'passed') {
+        fixedCases.push(tc);
       }
     }
   } finally {
-    if (browser) {
-      try {
-        await browser.close();
-        console.log('\n✅ 浏览器已统一关闭');
-      } catch (e) {
-        console.error('关闭浏览器失败:', e.message);
-      }
+    await browser.close();
+    console.log(`\n✅ 浏览器已统一关闭`);
+  }
+
+  const passed = results.filter(r => r.status === 'passed').length;
+  const failed = results.filter(r => r.status === 'failed').length;
+  const total = results.length;
+
+  console.log(`\n============================================================`);
+  console.log(`测试结果汇总`);
+  console.log(`============================================================`);
+  console.log(`总测试数: ${total}`);
+  console.log(`通过: ${passed} ✅`);
+  console.log(`失败: ${failed} ❌`);
+  console.log(`通过率: ${((passed / total) * 100).toFixed(1)}%`);
+
+  if (fixedCases.length > 0) {
+    markAsFixed(fixedCases);
+  }
+
+  if (failed > 0) {
+    const failedCases = results.filter(r => r.status === 'failed').map(r => ({
+      year: r.birthday.year,
+      month: r.birthday.month,
+      day: r.birthday.day,
+      hour: r.birthday.hour,
+      gender: r.birthday.gender,
+      name: `${r.caseType}-${r.birthday.year}年${r.birthday.month}月${r.birthday.day}日${r.birthday.hour}:00${r.birthday.gender}(${r.birthday.age}岁)`,
+      mismatches: r.mismatches
+    }));
+    saveFailedCases(failedCases);
+  }
+
+  const reportFiles = generateTestReport(results, passed, failed, total, testScope, reportDirName);
+
+  console.log(`\n============================================================`);
+  console.log(`✅ 测试完成`);
+  console.log(`============================================================`);
+  console.log(`\n📊 测试报告文件:`);
+  console.log(`   HTML: ${reportFiles.htmlFileName}`);
+  console.log(`   汇总: ${reportFiles.summaryFileName}`);
+  console.log(`   测试用例: ${reportFiles.totalCases} 个JSON文件`);
+  console.log(`\n📁 报告目录:`);
+  console.log(`   ${reportFiles.reportDir}`);
+  console.log(`\n📈 测试统计:`);
+  console.log(`   总数: ${reportFiles.totalCases}`);
+  console.log(`   通过: ${reportFiles.passedCases} ✅`);
+  console.log(`   失败: ${reportFiles.failedCases} ❌`);
+  console.log(`============================================================`);
+
+  return reportFiles;
+}
+
+/**
+ * 生成随机测试用例
+ * @param {number} count - 生成数量
+ * @param {Array} existingCases - 已存在的用例
+ * @returns {Array} 随机用例数组
+ */
+function generateRandomCases(count, existingCases) {
+  const currentYear = new Date().getFullYear();
+  const cases = [];
+  const existingKeys = new Set(existingCases.map(tc => `${tc.year}-${tc.month}-${tc.day}-${tc.hour}-${tc.gender}`));
+
+  while (cases.length < count) {
+    const age = Math.random() < 0.7 ? Math.floor(Math.random() * 26) + 20 : Math.floor(Math.random() * 60) + 1;
+    const year = currentYear - age;
+    const month = Math.floor(Math.random() * 12) + 1;
+    const day = Math.floor(Math.random() * 28) + 1;
+    const hour = Math.floor(Math.random() * 24);
+    const gender = Math.random() < 0.5 ? '男' : '女';
+    const key = `${year}-${month}-${day}-${hour}-${gender}`;
+
+    if (!existingKeys.has(key)) {
+      cases.push({
+        year,
+        month,
+        day,
+        hour,
+        minute: 0,
+        gender,
+        age,
+        name: `随机-${year}年${month}月${day}日${hour}:00${gender}(${age}岁)`
+      });
+      existingKeys.add(key);
     }
   }
 
-  console.log('\n' + '='.repeat(60));
-  console.log('测试结果汇总');
-  console.log('='.repeat(60));
-  console.log(`总测试数: ${actualTestCases.length}`);
-  console.log(`通过: ${passed} ✅`);
-  console.log(`失败: ${failed} ❌`);
-  console.log(`通过率: ${((passed / actualTestCases.length) * 100).toFixed(1)}%`);
-
-  if (failed > 0) {
-    console.log('\n失败案例:');
-    results.filter(r => !r.match).forEach(r => {
-      console.log(`  - ${r.tc.year}年${r.tc.month}月${r.tc.day}日 ${r.tc.hour}:00 ${r.tc.gender}`);
-    });
-  }
-
-  const failedNonPresetCases = results.filter(r => !r.match && (r.tc.isRandom || r.tc.isSingle)).map(r => ({
-    year: r.tc.year,
-    month: r.tc.month,
-    day: r.tc.day,
-    hour: r.tc.hour,
-    minute: r.tc.minute || 0,
-    gender: r.tc.gender,
-    name: r.tc.name,
-    failedAt: new Date().toISOString(),
-    mismatches: r.mismatches || []
-  }));
-
-  if (failedNonPresetCases.length > 0) {
-    saveFailedCases(failedNonPresetCases);
-  }
-
-  if (fixedFailedCases.length > 0) {
-    markAsFixed(fixedFailedCases);
-  }
-
-  console.log('\n' + '='.repeat(60));
-  console.log('生成测试报告...');
-  const reportPath = generateTestReport(results, passed, failed, actualTestCases.length);
-  console.log(`报告已保存: ${reportPath}`);
+  return cases;
 }
 
-main().catch(e => {
-  console.error('测试执行错误:', e);
-  process.exit(1);
-});
+/**
+ * 解析单个测试用例
+ * @param {string} single - 单个用例字符串（格式：年-月-日-时:分-性别）
+ * @returns {Object} 测试用例对象
+ */
+function parseSingleCase(single) {
+  const parts = single.split('-');
+  const year = parseInt(parts[0]);
+  const month = parseInt(parts[1]);
+  const day = parseInt(parts[2]);
+  const timePart = parts[3];
+  const gender = parts[4];
+
+  let hour, minute;
+  if (timePart.includes(':')) {
+    [hour, minute] = timePart.split(':').map(Number);
+  } else {
+    hour = parseInt(timePart);
+    minute = 0;
+  }
+
+  const currentYear = new Date().getFullYear();
+  const age = currentYear - year;
+
+  return {
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    gender,
+    age,
+    name: `单个-${year}年${month}月${day}日${hour}:${minute.toString().padStart(2, '0')}${gender}(${age}岁)`
+  };
+}
+
+module.exports = { main, generateTestReport };
+
+// 如果直接运行此文件，执行main函数
+if (require.main === module) {
+  main().catch(error => {
+    console.error('测试执行失败:', error);
+    process.exit(1);
+  });
+}
